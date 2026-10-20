@@ -1,5 +1,6 @@
 **/node_modules/
 /.m2/
+# 本地迁移包（含安装包与离线依赖，体积大，仅用于换机交付，不入库）
 /migration/
 /.run/
 /.playwright-cli/
