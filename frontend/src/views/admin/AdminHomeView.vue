@@ -1,17 +1,107 @@
-<template><WorkspaceLayout role="ADMIN"><p class="eyebrow">运营概览</p><h1 class="page-title">让每项服务都有回应。</h1><p class="muted">统计来自当前业务数据库。</p><p v-if="error" class="form-error" role="alert">{{ error }}</p><div class="metrics"><div v-for="metric in metrics" :key="metric.label" class="surface metric"><span>{{ metric.label }}</span><strong>{{ metric.value }}</strong></div></div><section class="surface recent todo-panel"><div class="recent-head"><h2>高优先级待办</h2><router-link to="/admin/operations">前往处理 →</router-link></div><div v-for="todo in todos" :key="todo.orderId" class="todo-row"><strong>订单 #{{ todo.orderId }} · {{ todo.title }}</strong><span>{{ todo.reason }}</span></div><div v-if="!todos.length&&!error" class="empty">当前没有高优先级待办。</div></section><section class="surface recent"><div class="recent-head"><h2>最新订单</h2><router-link to="/admin/operations">前往服务运营 →</router-link></div><div v-for="order in dashboard?.recentOrders || []" :key="order.id" class="row"><strong>{{ order.item_name_snapshot }}</strong><span>{{ order.elder_name }}</span><span>{{ statusName(order.status) }}</span><span>{{ formatTime(order.start_at) }}</span></div><div v-if="!dashboard?.recentOrders?.length && !error" class="empty">暂无订单数据。</div></section></WorkspaceLayout></template>
+<template>
+  <WorkspaceLayout role="ADMIN">
+    <PageHeader eyebrow="运营概览" title="让每项服务都有回应。" description="统计与列表均来自当前业务数据库。">
+      <template #actions>
+        <span class="worker-chip">有效服务人员 {{ dashboard?.activeWorkers ?? '—' }}</span>
+        <router-link class="link" to="/admin/operations">前往服务运营 →</router-link>
+      </template>
+    </PageHeader>
+
+    <ErrorBanner :message="error" />
+
+    <div class="metrics">
+      <StatCard v-for="metric in metrics" :key="metric.label" :label="metric.label" :value="metric.value" />
+    </div>
+
+    <SectionCard class="panel" title="高优先级待办" description="按订单与人员当前状态实时计算，不另存状态。">
+      <ul v-if="todos.length" class="todo-list">
+        <li v-for="todo in todos" :key="todo.orderId">
+          <div>
+            <strong>订单 #{{ todo.orderId }} · {{ todo.title }}</strong>
+            <p class="muted">{{ todo.reason }}</p>
+          </div>
+          <StatusTag :value="todo.priority" :dict="PRIORITY" />
+        </li>
+      </ul>
+      <EmptyState v-else-if="!error" title="当前没有高优先级待办。" description="出现中断、超时未确认或临近未派单时会自动出现在这里。" />
+    </SectionCard>
+
+    <SectionCard class="panel" title="最新订单">
+      <template #actions>
+        <router-link class="link" to="/admin/operations">查看全部 →</router-link>
+      </template>
+      <div v-if="dashboard?.recentOrders?.length" class="order-list">
+        <div v-for="order in dashboard.recentOrders" :key="order.id" class="order-row">
+          <span class="cell-strong">{{ order.item_name_snapshot }}</span>
+          <span class="muted">{{ order.elder_name }}</span>
+          <StatusTag :value="order.status" :dict="ORDER_STATUS" />
+          <span class="muted time">{{ formatDateTime(order.start_at) }}</span>
+        </div>
+      </div>
+      <EmptyState v-else-if="!error" title="暂无订单数据。" />
+    </SectionCard>
+  </WorkspaceLayout>
+</template>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import WorkspaceLayout from '../../layouts/WorkspaceLayout.vue'
+import PageHeader from '../../components/common/PageHeader.vue'
+import StatCard from '../../components/common/StatCard.vue'
+import StatusTag from '../../components/common/StatusTag.vue'
+import SectionCard from '../../components/common/SectionCard.vue'
+import EmptyState from '../../components/common/EmptyState.vue'
+import ErrorBanner from '../../components/common/ErrorBanner.vue'
+import { formatDateTime } from '../../utils/format'
+import { ORDER_STATUS, PRIORITY } from '../../constants/status'
 import { api } from '../../api/client'
-type Recent={id:number;item_name_snapshot:string;elder_name:string;status:string;start_at:string}
-type Dashboard={waitingAssignment:number;waitingConfirmation:number;inService:number;completed:number;activeWorkers:number;recentOrders:Recent[]}
-const dashboard=ref<Dashboard|null>(null),error=ref('')
-type Todo={orderId:number;title:string;reason:string;priority:string}
-const todos=ref<Todo[]>([])
-const metrics=computed(()=>[{label:'待派单',value:dashboard.value?.waitingAssignment??'—'},{label:'服务中',value:dashboard.value?.inService??'—'},{label:'待确认',value:dashboard.value?.waitingConfirmation??'—'},{label:'已完成',value:dashboard.value?.completed??'—'},{label:'有效服务人员',value:dashboard.value?.activeWorkers??'—'}])
-const labels:Record<string,string>={WAITING_ASSIGNMENT:'待派单',WAITING_ACCEPTANCE:'待接单',WAITING_SERVICE:'待服务',IN_SERVICE:'服务中',WAITING_CONFIRMATION:'待确认',COMPLETED:'已完成',CANCELLED:'已取消',INTERRUPTED:'服务中断',ABNORMAL_CLOSED:'异常结案'}
-function statusName(value:string){return labels[value]||value}
-function formatTime(value:string){return new Date(value).toLocaleString('zh-CN',{hour12:false})}
-onMounted(async()=>{try{[dashboard.value,todos.value]=await Promise.all([api<Dashboard>('/admin/dashboard'),api<Todo[]>('/admin/todos')])}catch(reason){error.value=reason instanceof Error?reason.message:'统计加载失败'}})
+
+type Recent = { id: number; item_name_snapshot: string; elder_name: string; status: string; start_at: string }
+type Dashboard = {
+  waitingAssignment: number
+  waitingConfirmation: number
+  inService: number
+  completed: number
+  activeWorkers: number
+  recentOrders: Recent[]
+}
+type Todo = { orderId: number; title: string; reason: string; priority: string }
+
+const dashboard = ref<Dashboard | null>(null)
+const todos = ref<Todo[]>([])
+const error = ref('')
+
+const metrics = computed(() => [
+  { label: '待派单', value: dashboard.value?.waitingAssignment ?? '—' },
+  { label: '服务中', value: dashboard.value?.inService ?? '—' },
+  { label: '待确认', value: dashboard.value?.waitingConfirmation ?? '—' },
+  { label: '已完成', value: dashboard.value?.completed ?? '—' },
+])
+
+onMounted(async () => {
+  try {
+    const [stats, todoList] = await Promise.all([api<Dashboard>('/admin/dashboard'), api<Todo[]>('/admin/todos')])
+    dashboard.value = stats
+    todos.value = todoList
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : '统计加载失败'
+  }
+})
 </script>
-<style scoped>.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:15px;margin:34px 0}.metric{padding:24px;display:grid;gap:12px}.metric span{color:#688074}.metric strong{font-size:36px}.recent{padding:28px;margin-top:18px}.recent-head{display:flex;justify-content:space-between;align-items:center}.recent-head a{color:#137b60;font-weight:700}.row{display:grid;grid-template-columns:2fr 1fr 1fr 1.5fr;gap:14px;padding:18px 0;border-top:1px solid #edf1ee}.todo-row{display:grid;gap:6px;border-top:1px solid #edf1ee;padding:15px 0}.todo-row span{color:#a34d31}.form-error{color:#b34939}@media(max-width:950px){.metrics{grid-template-columns:repeat(3,1fr)}}@media(max-width:600px){.metrics{grid-template-columns:repeat(2,1fr)}.row{grid-template-columns:1fr 1fr}}</style>
+<style scoped>
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); margin: var(--space-6) 0; }
+.panel { margin-bottom: var(--space-4); }
+.worker-chip { padding: 6px 14px; border-radius: var(--radius-pill); background: var(--color-primary-soft); color: var(--color-primary); font-size: var(--text-sm); font-weight: 650; }
+.link { color: var(--color-primary); font-weight: 650; font-size: var(--text-sm); }
+.todo-list { list-style: none; margin: 0; padding: 0; }
+.todo-list li { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) 0; border-top: 1px solid var(--color-line); }
+.todo-list li:first-child { border-top: 0; padding-top: 0; }
+.todo-list p { margin: var(--space-1) 0 0; font-size: var(--text-sm); }
+.order-list { display: grid; }
+.order-row { display: grid; grid-template-columns: minmax(0, 2fr) 1fr 110px 170px; align-items: center; gap: var(--space-4); min-height: var(--row-compact); border-top: 1px solid var(--color-line); }
+.order-row:first-child { border-top: 0; }
+.cell-strong { font-weight: 650; }
+@media (max-width: 760px) {
+  .order-row { grid-template-columns: 1fr 1fr; padding: var(--space-3) 0; }
+  .time { grid-column: 1 / -1; }
+}
+</style>

@@ -13,11 +13,12 @@
       </div>
       <p class="story-footer">专业服务，温暖相伴。</p>
     </section>
-    <section class="auth-form-area"><div class="auth-form-wrap"><slot /></div></section>
+    <section class="auth-form-area"><SeniorToggle class="auth-senior" /><div class="auth-form-wrap"><slot /></div></section>
   </main>
 </template>
 <script setup lang="ts">
 import BrandMark from '../components/BrandMark.vue'
+import SeniorToggle from '../components/common/SeniorToggle.vue'
 </script>
 <style scoped>
 .auth-page { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(440px, .85fr); background: #fff; }
@@ -32,8 +33,9 @@ h1 { margin: 0 0 20px; font-size: clamp(52px, 5vw, 72px); line-height: 1.14; let
 .service-list strong { font-size: 16px; }
 .service-list small { color: #607d6d; margin-top: 5px; }
 .story-footer { margin: 0; color: #719184; font-size: 14px; }
-.auth-form-area { display: grid; place-items: center; padding: 28px; background: radial-gradient(circle at 85% 8%, #cfeade, transparent 37%), #e8f3ed; }
-.auth-form-wrap { width: min(100%, 520px); padding: 40px; border: 1px solid #e7eee9; border-radius: 26px; background: #fff; box-shadow: 0 18px 60px rgba(37, 83, 61, .09); }
+.auth-form-area { position: relative; display: grid; place-items: center; padding: 28px; background: radial-gradient(circle at 85% 8%, #cfeade, transparent 37%), #e8f3ed; }
+.auth-senior { position: absolute; top: 20px; right: 24px; z-index: 1; }
+.auth-form-wrap { width: min(100%, 520px); padding: 40px; border: 1px solid var(--color-line); border-radius: 26px; background: #fff; box-shadow: var(--shadow-pop); }
 @media (max-width: 850px) { .auth-page { grid-template-columns: 1fr; } .auth-story { min-height: auto; padding: 28px 32px; } .story-body { margin: 40px 0; } h1 { font-size: 46px; } .story-footer { display: none; } .auth-form-area { padding: 42px 32px 70px; } }
 @media (max-height: 720px) and (min-width: 851px) { .auth-story { min-height: 100vh; padding-top: 24px; padding-bottom: 20px; } .story-body { margin-top: 26px; } h1 { font-size: clamp(44px, 4.2vw, 58px); } .story-body p { font-size: 17px; line-height: 1.5; } .service-list { margin-top: 24px; } .service-list div { min-height: 126px; padding: 12px; } .auth-form-area { padding: 14px 24px; } .auth-form-wrap { padding: 16px 32px; } }
 @media (max-width: 560px) { .service-list { grid-template-columns: 1fr 1fr 1fr; gap: 6px; } .service-list div { min-height: 124px; padding: 10px; border-radius: 12px; } .service-list strong { font-size: 13px; } .service-list small { font-size: 11px; } .auth-form-area { padding: 24px 16px 48px; } .auth-form-wrap { padding: 28px 22px; } }

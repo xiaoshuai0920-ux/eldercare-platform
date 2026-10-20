@@ -1,0 +1,40 @@
+html[data-senior="on"] body {
+  font-size: var(--text-base);
+}
+
+html[data-senior="on"] button,
+html[data-senior="on"] .text-button,
+html[data-senior="on"] .el-input__wrapper,
+html[data-senior="on"] .el-select__wrapper {
+  min-height: 48px;
+}
+
+html[data-senior="on"] .muted {
+  color: #50645b;
+}
+
+html[data-senior="on"] .page-title {
+  font-size: clamp(34px, 4vw, 48px);
+}
+
+html[data-senior="on"] .surface {
+  border-color: var(--color-line);
+}
+
+html[data-senior="on"] .el-input__inner,
+html[data-senior="on"] .el-textarea__inner,
+html[data-senior="on"] .el-form-item__label,
+html[data-senior="on"] .el-dialog__body,
+html[data-senior="on"] .el-dialog__title,
+html[data-senior="on"] .el-tabs__item,
+html[data-senior="on"] .el-select-dropdown__item {
+  font-size: var(--text-base);
+}
+
+html[data-senior="on"] .el-dialog {
+  --el-dialog-padding-primary: 24px;
+}
+
+html[data-senior="on"] .el-rate {
+  --el-rate-icon-size: 28px;
+}
