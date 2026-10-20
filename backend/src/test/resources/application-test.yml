@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/eldercare_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${DB_PASSWORD:}
+  jackson:
+    time-zone: Asia/Shanghai
+app:
+  timezone: Asia/Shanghai
+  bootstrap-admin-username: testadmin
+  bootstrap-admin-password: test-admin-pass
+  bootstrap-admin-reset: true
+  demo-data:
+    enabled: false
+    reset-passwords: false
+    password: ""
+  payment-base-url: http://127.0.0.1:8081
+  payment-service-token: test-service-token

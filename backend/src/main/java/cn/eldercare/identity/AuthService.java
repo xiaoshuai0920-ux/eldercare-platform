@@ -74,7 +74,8 @@ public class AuthService {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "ACCOUNT_LOCKED", "登录尝试过多，请稍后再试");
         }
         if (!"ACTIVE".equals(account.getStatus()) || !encoder.matches(password, account.getPasswordHash())) {
-            jdbc.update("UPDATE account SET failed_logins=failed_logins+1, locked_until=CASE WHEN failed_logins+1>=5 THEN ? ELSE locked_until END WHERE id=?",
+            // MySQL 的 SET 自左向右求值：先判断是否达到阈值，再自增，避免用自增后的值比较导致提前锁定
+            jdbc.update("UPDATE account SET locked_until=CASE WHEN failed_logins+1>=5 THEN ? ELSE locked_until END, failed_logins=failed_logins+1 WHERE id=?",
                     now().plusMinutes(15), account.getId());
             throw badCredentials();
         }
