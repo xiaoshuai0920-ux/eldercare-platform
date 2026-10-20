@@ -40,7 +40,7 @@
 | --- | --- | --- | --- |
 | A | Git 基线 | 完成 | `git init -b main`；基线提交不含 `.env`/`node_modules`/`target`/`dist`/`.m2`；提交前按树对象校验真实密码零命中 |
 | B | 账号改为 username 登录 | 完成 | `V008__username_login.sql` 已在 127.0.0.1:3306 执行：`schema_migration` 记录 V000–V009，`account.username` 非空唯一，`admin` 回填成功，`worker_activation` 与 `email_verification` 已移除，`family_invitation.invitee_account_id` 就绪；后端 `mvn -o compile` 与前端 `npm run build` 均退出 0 |
-| C | 配置与脚本一致性 | 进行中 | 待补充 |
+| C | 配置与脚本一致性 | 完成 | 两份 `application.yml` 非敏感项固化，删除 `spring.mail`/`email-mode`/`mail-from`；新增 `.env.example` 与 `DEMO_ACCOUNT_PASSWORD`；新增 `scripts/_env.ps1` 统一解析；`init-db`/`backup`/`restore` 统一读 `DB_PASSWORD` 并固定 3306；`start.ps1` 缺产物自动构建。实测：`check-env.ps1` 通过、`start.ps1 -SkipBuild` 三端就绪、`admin/123456` 登录 200 且 `/api/auth/verify-email` 返回 404 |
 | D | 演示数据 | 待开始 | 待补充 |
 | E | 前端页面重构 | 待开始 | 待补充 |
 | F | 测试体系 | 待开始 | 待补充 |
