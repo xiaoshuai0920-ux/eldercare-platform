@@ -1,20 +1,15 @@
 package cn.eldercare.worker;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
 import cn.eldercare.common.ApiException;
-import cn.eldercare.common.SqlValues;
 import cn.eldercare.identity.AccountEntity;
 import cn.eldercare.identity.AccountMapper;
+import cn.eldercare.identity.AuthService;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class WorkerAdminService {
-    private final SecureRandom random = new SecureRandom();
     private final JdbcTemplate jdbc;
     private final AccountMapper accounts;
     private final PasswordEncoder encoder;
@@ -32,36 +26,27 @@ public class WorkerAdminService {
     }
 
     @Transactional
-    public String createWorker(long adminId, String email, String name) {
+    public long createWorker(long adminId, String inputUsername, String name, String password, String rawEmail) {
+        String username = AuthService.normalizeUsername(inputUsername);
+        AuthService.validateUsername(username);
+        AuthService.validatePassword(password);
+        Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM account WHERE username=?", Integer.class, username);
+        if (exists != null && exists > 0) throw new ApiException(HttpStatus.CONFLICT, "USERNAME_EXISTS", "该账号已被注册");
         AccountEntity worker = new AccountEntity();
-        worker.setEmail(email.trim().toLowerCase(java.util.Locale.ROOT));
-        worker.setDisplayName(name.trim());
-        worker.setPasswordHash(encoder.encode(Base64.getUrlEncoder().withoutPadding().encodeToString(random.generateSeed(36))));
+        worker.setUsername(username);
+        worker.setEmail(AuthService.normalizeEmail(rawEmail));
+        worker.setDisplayName(name == null || name.isBlank() ? username : name.trim());
+        worker.setPasswordHash(encoder.encode(password));
         worker.setRole("WORKER");
-        worker.setStatus("PENDING_ACTIVATION");
+        worker.setStatus("ACTIVE");
         accounts.insert(worker);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random.generateSeed(32));
-        jdbc.update("INSERT INTO worker_activation(account_id,token_hash,expires_at) VALUES(?,?,?)",
-                worker.getId(), sha256(token), LocalDateTime.now(ZoneId.of("Asia/Shanghai")).plusDays(2));
-        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)", adminId, "WORKER_CREATE", "ACCOUNT", worker.getId(), "创建待激活服务人员账号");
-        return token;
-    }
-
-    @Transactional
-    public void activate(String token, String password) {
-        if (password.length() < 12 || password.length() > 72) throw new ApiException(HttpStatus.BAD_REQUEST, "WEAK_PASSWORD", "服务人员密码须为 12–72 位");
-        List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM worker_activation WHERE token_hash=? FOR UPDATE", sha256(token));
-        if (rows.isEmpty()) throw invalidActivation();
-        Map<String, Object> activation = rows.getFirst();
-        if (activation.get("used_at") != null || SqlValues.localDateTime(activation.get("expires_at")).isBefore(LocalDateTime.now(ZoneId.of("Asia/Shanghai")))) throw invalidActivation();
-        long workerId = ((Number) activation.get("account_id")).longValue();
-        int changed = jdbc.update("UPDATE account SET password_hash=?,status='ACTIVE' WHERE id=? AND role='WORKER' AND status='PENDING_ACTIVATION'", encoder.encode(password), workerId);
-        if (changed != 1) throw invalidActivation();
-        jdbc.update("UPDATE worker_activation SET used_at=? WHERE id=?", LocalDateTime.now(ZoneId.of("Asia/Shanghai")), activation.get("id"));
+        jdbc.update("UPDATE account SET accepting=1 WHERE id=?", worker.getId());
+        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)", adminId, "WORKER_CREATE", "ACCOUNT", worker.getId(), "创建服务人员账号");
+        return worker.getId();
     }
 
     public List<Map<String, Object>> workers() {
-        return jdbc.queryForList("SELECT id,email,display_name,status,accepting FROM account WHERE role='WORKER' ORDER BY id DESC");
+        return jdbc.queryForList("SELECT id,username,email,display_name,status,accepting FROM account WHERE role='WORKER' ORDER BY id DESC");
     }
 
     public void capability(long workerId, long itemId, long streetId) {
@@ -154,10 +139,4 @@ public class WorkerAdminService {
         if(rows.isEmpty())throw new ApiException(HttpStatus.FORBIDDEN,"TASK_NOT_AVAILABLE","当前没有此任务的有效派单");
         return rows.getFirst();
     }
-
-    private String sha256(String value) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
-        catch (java.security.NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
-    }
-    private ApiException invalidActivation() { return new ApiException(HttpStatus.BAD_REQUEST, "ACTIVATION_INVALID", "激活码无效或已过期"); }
 }

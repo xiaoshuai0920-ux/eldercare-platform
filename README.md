@@ -8,7 +8,7 @@ Windows 本地项目：Vue 3 前端、Spring Boot 主业务服务、独立模拟
 
 项目根目录的 `.env` 是本机私密配置，已被 `.gitignore` 排除。请将其中 `DB_PASSWORD=` 填成当前 MySQL root 的真实密码，不加引号。两个服务使用同一个密码；文件中的管理员初始密码及两个支付令牌已随机生成，可在本机打开该文件查看，不要上传或发送给他人。`start.ps1` 和 `init-db.ps1` 会读取 `.env`，直接运行 JAR 不会自动读取该文件。
 
-首次启动且库中没有管理员时，会创建 `admin@example.invalid`，登录密码为 `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`。注册固定为本地演示验证码模式，页面会显示测试验证码；该模式不能证明真实邮箱所有权。当前配置不发送真实邮件。
+首次启动时会按 `app.bootstrap-admin-username`（默认 `admin`）创建或重置管理员账号，密码取 `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`。登录使用**登录账号 + 密码**，邮箱只是可选联系方式，注册不再需要邮箱验证码；服务人员账号由管理员创建时直接设定初始密码，创建后即可登录。当前不发送任何真实邮件。
 
 ## 初始化与启动
 

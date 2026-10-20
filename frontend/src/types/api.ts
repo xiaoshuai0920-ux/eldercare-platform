@@ -13,6 +13,7 @@ export interface Page<T> {
 
 export interface SessionUser {
   id: number
+  username: string
   name: string
   role: 'USER' | 'WORKER' | 'ADMIN'
 }

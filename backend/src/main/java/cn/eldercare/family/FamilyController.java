@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -26,7 +25,7 @@ public class FamilyController {
     public FamilyController(FamilyService service) { this.service = service; }
 
     public record CreateElderRequest(@NotBlank @Size(max = 80) String fullName, LocalDate birthDate, boolean declaresAuthorization) { }
-    public record InviteRequest(@NotBlank @Email String email, @NotNull FamilyService.Permissions permissions) { }
+    public record InviteRequest(@NotBlank @Size(max = 32) String username, @NotNull FamilyService.Permissions permissions) { }
 
     @PostMapping("/elders")
     public FamilyService.ElderView create(@Valid @RequestBody CreateElderRequest input, Authentication auth) {
@@ -41,7 +40,7 @@ public class FamilyController {
 
     @PostMapping("/elders/{elderId}/invitations")
     public Map<String, Long> invite(@PathVariable long elderId, @Valid @RequestBody InviteRequest input, Authentication auth) {
-        return Map.of("id", service.invite(actor(auth), elderId, input.email(), input.permissions()));
+        return Map.of("id", service.invite(actor(auth), elderId, input.username(), input.permissions()));
     }
 
     @GetMapping("/family/invitations")

@@ -33,3 +33,15 @@
 1. 跨实例通知并发、矛盾晚到交易等不经正常控制台产生的故障注入场景仍需专项验证；原生浏览器缩放尚未单独验证。
 2. 后续若补做数据库场景，须重新初始化独立测试实例；没有目标库确认和凭证时，不使用现有 3306 数据。
 3. 用户需先让本机 MySQL 8 在 3306 可连接、确认目标库，并在本地 `.env` 填写实际 root 密码，再执行初始化与启动验收；真实 SMTP 模式当前固定关闭。上述本机数据库和真实邮件均未验证，不能宣称完整交付。
+
+## 2026-10-20 账号体系与演示能力改造
+
+| 阶段 | 内容 | 状态 | 证据 |
+| --- | --- | --- | --- |
+| A | Git 基线 | 完成 | `git init -b main`；基线提交不含 `.env`/`node_modules`/`target`/`dist`/`.m2`；提交前按树对象校验真实密码零命中 |
+| B | 账号改为 username 登录 | 完成 | `V008__username_login.sql` 已在 127.0.0.1:3306 执行：`schema_migration` 记录 V000–V009，`account.username` 非空唯一，`admin` 回填成功，`worker_activation` 与 `email_verification` 已移除，`family_invitation.invitee_account_id` 就绪；后端 `mvn -o compile` 与前端 `npm run build` 均退出 0 |
+| C | 配置与脚本一致性 | 进行中 | 待补充 |
+| D | 演示数据 | 待开始 | 待补充 |
+| E | 前端页面重构 | 待开始 | 待补充 |
+| F | 测试体系 | 待开始 | 待补充 |
+| G | AGENTS.md 重写 | 待开始 | 待补充 |

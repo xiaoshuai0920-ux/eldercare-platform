@@ -4,7 +4,7 @@
     <h2 class="auth-title">登录您的账号</h2>
     <p class="muted auth-subtitle">继续管理服务、订单与生活提醒。</p>
     <el-form @submit.prevent="submit" label-position="top" class="auth-form">
-      <el-form-item label="邮箱"><el-input v-model="email" type="email" autocomplete="username" size="large" placeholder="请输入邮箱" /></el-form-item>
+      <el-form-item label="账号"><el-input v-model="username" autocomplete="username" size="large" placeholder="请输入登录账号" /></el-form-item>
       <el-form-item label="密码"><el-input v-model="password" type="password" autocomplete="current-password" show-password size="large" placeholder="请输入密码" /></el-form-item>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <button class="primary submit" type="submit" :disabled="loading">{{ loading ? '登录中…' : '登录' }}</button>
@@ -18,7 +18,7 @@ import { useRouter } from 'vue-router'
 import AuthLayout from '../../layouts/AuthLayout.vue'
 import { useSessionStore } from '../../stores/session'
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -26,9 +26,9 @@ const router = useRouter()
 const session = useSessionStore()
 async function submit() {
   error.value = ''
-  if (!email.value || !password.value) { error.value = '请输入邮箱和密码'; return }
+  if (!username.value || !password.value) { error.value = '请输入账号和密码'; return }
   loading.value = true
-  try { await session.login(email.value.trim(), password.value); await router.replace(`/${session.user?.role.toLowerCase() || 'user'}`) }
+  try { await session.login(username.value.trim(), password.value); await router.replace(`/${session.user?.role.toLowerCase() || 'user'}`) }
   catch (reason) { error.value = reason instanceof Error ? reason.message : '登录失败' }
   finally { loading.value = false }
 }

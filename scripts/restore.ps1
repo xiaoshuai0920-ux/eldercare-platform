@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][string]$MainBackup,
     [Parameter(Mandatory=$true)][string]$PaymentBackup,
     [switch]$ConfirmRestore

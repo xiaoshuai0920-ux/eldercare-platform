@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $pidFile = Join-Path $root '.run/pids.json'
 if (!(Test-Path $pidFile)) { Write-Host '没有本脚本的启动记录。'; return }

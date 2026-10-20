@@ -4,11 +4,11 @@
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <section v-if="invitations.length" class="surface section"><h2>待您确认的邀请</h2><div v-for="invitation in invitations" :key="invitation.id" class="line"><span>{{ invitation.elder_name }}的家庭邀请</span><div><button class="text-button" @click="respond(invitation.id, false)">拒绝</button><button class="primary small" @click="respond(invitation.id, true)">接受</button></div></div></section>
     <section class="section"><h2>已授权的老人档案</h2><div v-if="elders.length" class="elder-grid"><button v-for="elder in elders" :key="elder.id" class="surface elder-card" @click="selectElder(elder)"><strong>{{ elder.fullName }}</strong><span>查看档案与家庭授权 →</span></button></div><div v-else class="empty">暂无可访问的老人档案。您可以创建新档案，或等待家庭成员邀请。</div></section>
-    <section v-if="selected" class="surface section detail"><div class="detail-header"><div><p class="eyebrow">当前档案</p><h2>{{ selected.fullName }}</h2><p class="muted">出生日期：{{ selected.birthDate || '未填写' }}</p></div><button v-if="currentPermissions?.canManageFamily" class="text-button" @click="inviteOpen = true">邀请家属</button></div><div><div class="detail-header"><h3>生活服务偏好</h3><button v-if="currentPermissions?.canManageFamily" class="text-button" @click="addPreference">添加偏好</button></div><div class="preferences"><span v-for="tag in preferences" :key="tag">{{ tag }} <button v-if="currentPermissions?.canManageFamily" class="remove-tag" :aria-label="`移除${tag}`" @click="removePreference(tag)">×</button></span><p v-if="!preferences.length" class="muted">暂未设置偏好；服务目录仍可正常浏览。</p></div></div><div v-if="currentPermissions?.canManageFamily"><h3>家庭授权</h3><div v-for="grant in grants" :key="grant.account_id" class="line"><span>{{ grant.display_name }} · {{ grant.email }} <small>{{ grant.status === 'ACTIVE' ? '有效' : '已撤销' }}</small></span><button v-if="grant.status === 'ACTIVE' && grant.account_id !== session.user?.id" class="text-button" @click="revoke(grant.account_id)">撤销授权</button></div></div></section>
+    <section v-if="selected" class="surface section detail"><div class="detail-header"><div><p class="eyebrow">当前档案</p><h2>{{ selected.fullName }}</h2><p class="muted">出生日期：{{ selected.birthDate || '未填写' }}</p></div><button v-if="currentPermissions?.canManageFamily" class="text-button" @click="inviteOpen = true">邀请家属</button></div><div><div class="detail-header"><h3>生活服务偏好</h3><button v-if="currentPermissions?.canManageFamily" class="text-button" @click="addPreference">添加偏好</button></div><div class="preferences"><span v-for="tag in preferences" :key="tag">{{ tag }} <button v-if="currentPermissions?.canManageFamily" class="remove-tag" :aria-label="`移除${tag}`" @click="removePreference(tag)">×</button></span><p v-if="!preferences.length" class="muted">暂未设置偏好；服务目录仍可正常浏览。</p></div></div><div v-if="currentPermissions?.canManageFamily"><h3>家庭授权</h3><div v-for="grant in grants" :key="grant.account_id" class="line"><span>{{ grant.display_name }} · {{ grant.username || grant.email }} <small>{{ grant.status === 'ACTIVE' ? '有效' : '已撤销' }}</small></span><button v-if="grant.status === 'ACTIVE' && grant.account_id !== session.user?.id" class="text-button" @click="revoke(grant.account_id)">撤销授权</button></div></div></section>
     <section v-if="selected" class="surface section detail"><h2>本人核验与家庭协调</h2><p class="muted">本人关联须由管理员线下核验；申请本身不会增加家庭授权。</p><div v-for="claim in identityClaims" :key="claim.id" class="line"><span>本人关联申请 #{{ claim.id }}</span><strong>{{ statusName(claim.status) }}</strong></div><button class="text-button" @click="claimIdentity">申请本人关联</button><h3>家庭关联争议</h3><div v-for="dispute in familyDisputes" :key="dispute.id" class="line"><span>{{ dispute.reason }}</span><strong>{{ statusName(dispute.status) }}</strong></div><button class="text-button" @click="openFamilyDispute(selected.id)">提交争议</button></section>
     <section class="surface section detail"><h2>已撤销授权的争议</h2><p class="muted">如果您的授权已撤销，可凭此前档案编号提交关联争议；此入口不会恢复档案访问权。</p><div class="former-dispute"><el-input-number v-model="formerElderId" :min="1" placeholder="档案编号" /><button class="text-button" :disabled="!formerElderId" @click="openFamilyDispute(formerElderId!)">提交争议</button></div></section>
     <el-dialog v-model="createOpen" title="新建老人档案" width="min(92vw, 520px)"><el-form label-position="top"><el-form-item label="姓名"><el-input v-model="newName" maxlength="80" /></el-form-item><el-form-item label="出生日期（选填）"><el-input v-model="newBirthDate" type="date" /></el-form-item><el-checkbox v-model="declaresAuthorization">我确认有权为此人创建档案并管理其服务</el-checkbox></el-form><template #footer><button class="primary" :disabled="busy" @click="createElder">保存档案</button></template></el-dialog>
-    <el-dialog v-model="inviteOpen" title="邀请家庭成员" width="min(92vw, 560px)"><el-form label-position="top"><el-form-item label="家属邮箱"><el-input v-model="inviteEmail" type="email" /></el-form-item><p class="muted">对方注册并登录相同邮箱后，可在家庭管理中确认邀请。</p><div class="permission-grid"><el-checkbox v-model="permissions.canViewService">查看服务信息</el-checkbox><el-checkbox v-model="permissions.canBook">代预约</el-checkbox><el-checkbox v-model="permissions.canManageReminder">管理生活提醒</el-checkbox><el-checkbox v-model="permissions.canCancel">取消订单</el-checkbox><el-checkbox v-model="permissions.canConfirm">确认完成</el-checkbox><el-checkbox v-model="permissions.canReview">评价服务</el-checkbox><el-checkbox v-model="permissions.canConfirmFee">确认费用调整</el-checkbox><el-checkbox v-model="permissions.canManageFamily">管理家庭授权</el-checkbox></div></el-form><template #footer><button class="primary" :disabled="busy" @click="invite">发出邀请</button></template></el-dialog>
+    <el-dialog v-model="inviteOpen" title="邀请家庭成员" width="min(92vw, 560px)"><el-form label-position="top"><el-form-item label="家属账号"><el-input v-model="inviteUsername" placeholder="对方注册时使用的登录账号" /></el-form-item><p class="muted">对方使用该账号登录后，可在家庭管理中确认邀请。</p><div class="permission-grid"><el-checkbox v-model="permissions.canViewService">查看服务信息</el-checkbox><el-checkbox v-model="permissions.canBook">代预约</el-checkbox><el-checkbox v-model="permissions.canManageReminder">管理生活提醒</el-checkbox><el-checkbox v-model="permissions.canCancel">取消订单</el-checkbox><el-checkbox v-model="permissions.canConfirm">确认完成</el-checkbox><el-checkbox v-model="permissions.canReview">评价服务</el-checkbox><el-checkbox v-model="permissions.canConfirmFee">确认费用调整</el-checkbox><el-checkbox v-model="permissions.canManageFamily">管理家庭授权</el-checkbox></div></el-form><template #footer><button class="primary" :disabled="busy" @click="invite">发出邀请</button></template></el-dialog>
   </WorkspaceLayout>
 </template>
 <script setup lang="ts">
@@ -20,7 +20,7 @@ import { useSessionStore } from '../../stores/session'
 
 interface Elder { id: number; fullName: string; birthDate: string | null }
 interface Invitation { id: number; elder_name: string }
-interface Grant { account_id: number; display_name: string; email: string; status: string }
+interface Grant { account_id: number; username: string; display_name: string; email: string | null; status: string }
 interface CurrentPermissions { canManageFamily: boolean }
 interface IdentityClaim { id: number; status: string }
 interface FamilyDispute { id: number; reason: string; status: string }
@@ -41,7 +41,7 @@ const inviteOpen = ref(false)
 const newName = ref('')
 const newBirthDate = ref('')
 const declaresAuthorization = ref(false)
-const inviteEmail = ref('')
+const inviteUsername = ref('')
 const permissions = reactive({ canViewService: true, canBook: false, canManageReminder: false, canCancel: false, canConfirm: false, canReview: false, canConfirmFee: false, canManageFamily: false })
 const statusLabels:Record<string,string>={PENDING:'待核验',APPROVED:'已核验',REJECTED:'已拒绝',REVOKED:'已撤销',OPEN:'待协调',RESOLVED:'已协调'}
 function statusName(value:string){return statusLabels[value]||value}
@@ -67,9 +67,9 @@ async function createElder() {
   finally { busy.value = false }
 }
 async function invite() {
-  if (!selected.value || !inviteEmail.value.includes('@')) { ElMessage.error('请填写家属邮箱'); return }
+  if (!selected.value || !inviteUsername.value.trim()) { ElMessage.error('请填写家属账号'); return }
   busy.value = true
-  try { await api(`/elders/${selected.value.id}/invitations`, { method: 'POST', body: JSON.stringify({ email: inviteEmail.value.trim(), permissions }) }); inviteOpen.value = false; ElMessage.success('邀请已发出') }
+  try { await api(`/elders/${selected.value.id}/invitations`, { method: 'POST', body: JSON.stringify({ username: inviteUsername.value.trim(), permissions }) }); inviteOpen.value = false; ElMessage.success('邀请已发出') }
   catch (reason) { ElMessage.error(reason instanceof Error ? reason.message : '邀请失败') }
   finally { busy.value = false }
 }

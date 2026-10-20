@@ -22,7 +22,7 @@ public class SecurityConfig {
         repository.setHeaderName("X-CSRF-TOKEN");
         http.csrf(csrf -> csrf.csrfTokenRepository(repository))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/error", "/api/health", "/api/ready", "/api/auth/csrf", "/api/auth/login", "/api/auth/register", "/api/auth/verify-email", "/api/auth/activate-worker").permitAll()
+                        .requestMatchers("/error", "/api/health", "/api/ready", "/api/auth/csrf", "/api/auth/login", "/api/auth/register").permitAll()
                         .anyRequest().authenticated())
                 .formLogin(login -> login.disable())
                 .httpBasic(basic -> basic.disable())

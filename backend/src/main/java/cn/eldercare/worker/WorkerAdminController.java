@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -24,21 +23,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkerAdminController {
     private final WorkerAdminService service;
     public WorkerAdminController(WorkerAdminService service) { this.service = service; }
-    public record WorkerRequest(@NotBlank @Email String email, @NotBlank @Size(max = 80) String name) { }
+    public record WorkerRequest(@NotBlank @Size(min = 4, max = 32) String username,
+                                @NotBlank @Size(max = 80) String name,
+                                @NotBlank String password,
+                                @Size(max = 254) String email) { }
     public record CapabilityRequest(@NotNull Long itemId, @NotNull Long streetId) { }
     public record ScheduleRequest(int weekday, @NotNull LocalTime startTime, @NotNull LocalTime endTime) { }
     public record AcceptingRequest(boolean accepting) { }
-    public record ActivateRequest(@NotBlank String token, @NotBlank String password) { }
     public record LeaveRequest(@NotNull LocalDateTime startAt,@NotNull LocalDateTime endAt,@NotBlank @Size(max=300) String reason) { }
     public record WorkerStateRequest(@NotBlank @Size(max=300) String reason) { }
 
-    @PostMapping("/auth/activate-worker")
-    public void activate(@Valid @RequestBody ActivateRequest input) { service.activate(input.token(), input.password()); }
-
     @PostMapping("/admin/workers")
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, String> create(@Valid @RequestBody WorkerRequest input, Authentication auth) {
-        return Map.of("activationToken", service.createWorker(Long.parseLong(auth.getName()), input.email(), input.name()));
+    public Map<String, Long> create(@Valid @RequestBody WorkerRequest input, Authentication auth) {
+        return Map.of("id", service.createWorker(Long.parseLong(auth.getName()), input.username(), input.name(), input.password(), input.email()));
     }
 
     @GetMapping("/admin/workers")

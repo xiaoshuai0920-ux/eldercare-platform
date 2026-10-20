@@ -6,11 +6,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import cn.eldercare.common.ApiException;
 import cn.eldercare.common.SqlValues;
+import cn.eldercare.identity.AuthService;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -67,21 +67,26 @@ public class FamilyService {
     }
 
     @Transactional
-    public long invite(long actorId, long elderId, String inputEmail, Permissions permissions) {
+    public long invite(long actorId, long elderId, String inputUsername, Permissions permissions) {
         requirePermission(actorId, elderId, "can_manage_family");
-        String email = inputEmail.trim().toLowerCase(Locale.ROOT);
-        String ownEmail = jdbc.queryForObject("SELECT email FROM account WHERE id=?", String.class, actorId);
-        if (email.equals(ownEmail)) throw new ApiException(HttpStatus.BAD_REQUEST, "SELF_INVITATION", "不能邀请自己");
+        String username = AuthService.normalizeUsername(inputUsername);
+        if (username.isBlank()) throw new ApiException(HttpStatus.BAD_REQUEST, "INVITEE_REQUIRED", "请填写家属账号");
+        List<Map<String, Object>> invitee = jdbc.queryForList("SELECT id,email FROM account WHERE username=?", username);
+        if (invitee.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "INVITEE_NOT_FOUND", "该账号不存在，请确认家属账号");
+        long inviteeId = ((Number) invitee.getFirst().get("id")).longValue();
+        if (inviteeId == actorId) throw new ApiException(HttpStatus.BAD_REQUEST, "SELF_INVITATION", "不能邀请自己");
+        String inviteeEmail = (String) invitee.getFirst().get("email");
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO family_invitation(elder_id,inviter_id,invitee_email,can_view_service,can_book,can_manage_reminder,can_cancel,can_confirm,can_review,can_confirm_fee,can_manage_family,status,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'PENDING',?)",
+                    "INSERT INTO family_invitation(elder_id,inviter_id,invitee_account_id,invitee_email,can_view_service,can_book,can_manage_reminder,can_cancel,can_confirm,can_review,can_confirm_fee,can_manage_family,status,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'PENDING',?)",
                     Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, elderId);
             statement.setLong(2, actorId);
-            statement.setString(3, email);
-            setPermissions(statement, 4, permissions);
-            statement.setObject(12, now().plusDays(7));
+            statement.setLong(3, inviteeId);
+            statement.setString(4, inviteeEmail);
+            setPermissions(statement, 5, permissions);
+            statement.setObject(13, now().plusDays(7));
             return statement;
         }, key);
         long id = key.getKey().longValue();
@@ -90,9 +95,8 @@ public class FamilyService {
     }
 
     public List<Map<String, Object>> pendingInvitations(long actorId) {
-        String email = jdbc.queryForObject("SELECT email FROM account WHERE id=?", String.class, actorId);
-        return jdbc.queryForList("SELECT i.id,i.elder_id,e.full_name AS elder_name,i.expires_at,i.can_view_service,i.can_book,i.can_manage_reminder,i.can_cancel,i.can_confirm,i.can_review,i.can_confirm_fee,i.can_manage_family FROM family_invitation i JOIN elder_profile e ON e.id=i.elder_id JOIN family_grant inviter ON inviter.elder_id=i.elder_id AND inviter.account_id=i.inviter_id WHERE i.invitee_email=? AND i.status='PENDING' AND i.expires_at>? AND e.status='ACTIVE' AND inviter.status='ACTIVE' AND inviter.can_manage_family=1 ORDER BY i.id DESC",
-                email, now());
+        return jdbc.queryForList("SELECT i.id,i.elder_id,e.full_name AS elder_name,i.expires_at,i.can_view_service,i.can_book,i.can_manage_reminder,i.can_cancel,i.can_confirm,i.can_review,i.can_confirm_fee,i.can_manage_family FROM family_invitation i JOIN elder_profile e ON e.id=i.elder_id JOIN family_grant inviter ON inviter.elder_id=i.elder_id AND inviter.account_id=i.inviter_id WHERE i.invitee_account_id=? AND i.status='PENDING' AND i.expires_at>? AND e.status='ACTIVE' AND inviter.status='ACTIVE' AND inviter.can_manage_family=1 ORDER BY i.id DESC",
+                actorId, now());
     }
 
     @Transactional
@@ -100,8 +104,10 @@ public class FamilyService {
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM family_invitation WHERE id=? FOR UPDATE", invitationId);
         if (rows.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "INVITATION_NOT_FOUND", "邀请不存在");
         Map<String, Object> invitation = rows.getFirst();
-        String email = jdbc.queryForObject("SELECT email FROM account WHERE id=?", String.class, actorId);
-        if (!email.equals(invitation.get("invitee_email"))) throw new ApiException(HttpStatus.FORBIDDEN, "INVITATION_FORBIDDEN", "无权处理该邀请");
+        Object inviteeId = invitation.get("invitee_account_id");
+        if (inviteeId == null || ((Number) inviteeId).longValue() != actorId) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "INVITATION_FORBIDDEN", "无权处理该邀请");
+        }
         if (!"PENDING".equals(invitation.get("status"))) throw new ApiException(HttpStatus.CONFLICT, "INVITATION_CLOSED", "邀请已处理");
         if (SqlValues.localDateTime(invitation.get("expires_at")).isBefore(now())) {
             throw new ApiException(HttpStatus.CONFLICT, "INVITATION_EXPIRED", "邀请已过期");
@@ -121,7 +127,7 @@ public class FamilyService {
 
     public List<Map<String, Object>> grants(long actorId, long elderId) {
         requirePermission(actorId, elderId, "can_manage_family");
-        return jdbc.queryForList("SELECT g.account_id,a.display_name,a.email,g.can_view_service,g.can_book,g.can_manage_reminder,g.can_cancel,g.can_confirm,g.can_review,g.can_confirm_fee,g.can_manage_family,g.status FROM family_grant g JOIN account a ON a.id=g.account_id WHERE g.elder_id=? ORDER BY g.id", elderId);
+        return jdbc.queryForList("SELECT g.account_id,a.username,a.display_name,a.email,g.can_view_service,g.can_book,g.can_manage_reminder,g.can_cancel,g.can_confirm,g.can_review,g.can_confirm_fee,g.can_manage_family,g.status FROM family_grant g JOIN account a ON a.id=g.account_id WHERE g.elder_id=? ORDER BY g.id", elderId);
     }
 
     public Permissions permissions(long actorId, long elderId) {

@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 public class AccountEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
+    private String username;
     private String email;
     private String displayName;
     private String passwordHash;
@@ -16,6 +17,8 @@ public class AccountEntity {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
     public String getDisplayName() { return displayName; }

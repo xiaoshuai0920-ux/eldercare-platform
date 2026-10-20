@@ -13,9 +13,9 @@ export const useSessionStore = defineStore('session', () => {
     finally { loaded.value = true }
   }
 
-  async function login(email: string, password: string) {
+  async function login(username: string, password: string) {
     user.value = await api<SessionUser>('/auth/login', {
-      method: 'POST', body: JSON.stringify({ email, password }),
+      method: 'POST', body: JSON.stringify({ username, password }),
     })
     loaded.value = true
   }

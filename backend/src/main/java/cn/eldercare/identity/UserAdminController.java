@@ -29,7 +29,7 @@ public class UserAdminController {
 
     @GetMapping
     public List<Map<String, Object>> users() {
-        return jdbc.queryForList("SELECT id,display_name,email,status,created_at FROM account WHERE role='USER' ORDER BY id DESC LIMIT 100");
+        return jdbc.queryForList("SELECT id,username,display_name,email,status,created_at FROM account WHERE role='USER' ORDER BY id DESC LIMIT 100");
     }
 
     @PostMapping("/{id}/{action:disable|enable}")

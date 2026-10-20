@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 Write-Host '居家养老平台 Windows 环境检查'
 foreach ($tool in @('java','mvn','node','npm','mysql')) {
     $command = Get-Command $tool -ErrorAction SilentlyContinue

@@ -1,6 +1,8 @@
 # API 基线
 
 - 同源入口 `/api`，JSON UTF-8；Session Cookie 为浏览器认证依据，修改请求提交 CSRF Token；不在浏览器持久存储认证秘密。
+- 认证以登录账号 `username` 为唯一凭证（4–32 位小写字母、数字或下划线），`email` 为可选联系方式；密码长度 6–72 位。`POST /api/auth/register` 直接创建可用账号，不依赖邮箱验证码；服务人员账号由管理员在 `POST /api/admin/workers` 中直接设定初始密码并置为 `ACTIVE`。
+- 登录失败累计 5 次锁定 15 分钟，返回 429 `ACCOUNT_LOCKED`；登录成功清零。`POST /api/auth/password` 供已登录账号修改密码。
 - 成功返回资源或命令结果，失败使用正确 HTTP 状态及 `{code,message,details}`。用户订单列表使用 `{items,page,size,total}`；其他运营列表当前为有上限的数组，分页尚未统一。
 - 资源查询使用 `GET /api/...`；状态变化采用 `POST /api/orders/{id}/assign|accept|reject|start|submit-completion|confirm|cancel|interrupt` 等语义命令。不得提供通用 `PUT status`。
 - 创建订单强制使用 `Idempotency-Key`；接单、开始服务、提交完成和交易同步对已达目标状态的重复请求返回当前结果，其他命令按状态冲突拒绝重复执行。版本冲突返回 409，未认证 401、无权限 403、无资源 404、参数错误 400。

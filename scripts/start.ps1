@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $runDir = Join-Path $root '.run'
 if (Test-Path (Join-Path $runDir 'pids.json')) { throw '检测到已有启动记录；请先运行 scripts/stop.ps1 或检查进程。' }

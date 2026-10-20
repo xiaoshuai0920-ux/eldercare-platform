@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useSessionStore } from '../stores/session'
 const LoginView = () => import('../views/auth/LoginView.vue')
 const RegisterView = () => import('../views/auth/RegisterView.vue')
-const ActivateWorkerView = () => import('../views/auth/ActivateWorkerView.vue')
 const UserHomeView = () => import('../views/user/UserHomeView.vue')
 const FamilyView = () => import('../views/user/FamilyView.vue')
 const ServicesView = () => import('../views/user/ServicesView.vue')
@@ -19,7 +18,6 @@ export const router = createRouter({
     { path: '/', redirect: '/login' },
     { path: '/login', component: LoginView, meta: { public: true } },
     { path: '/register', component: RegisterView, meta: { public: true } },
-    { path: '/activate-worker', component: ActivateWorkerView, meta: { public: true } },
     { path: '/user', component: UserHomeView, meta: { role: 'USER' } },
     { path: '/user/family', component: FamilyView, meta: { role: 'USER' } },
     { path: '/user/services', component: ServicesView, meta: { role: 'USER' } },

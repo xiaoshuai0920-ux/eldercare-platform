@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $backupDir = Join-Path $root '.run/backups'
 $mysqlPort = if ($env:MYSQL_PORT) { $env:MYSQL_PORT } else { '3306' }
