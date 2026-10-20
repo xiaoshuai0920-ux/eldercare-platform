@@ -44,4 +44,4 @@
 | D | 演示数据 | 完成 | 新增 `demo/DemoDataSeeder` 与 `DemoSeedRegistry`，`V009__demo_seed.sql` 只建登记表。实测启动后 6 账号 / 5 区域 / 3 项目 / 9 覆盖 / 11 能力 / 3 档案 / 5 授权 / 15 订单（覆盖 COMPLETED×6、INTERRUPTED×2、ABNORMAL_CLOSED、CANCELLED、IN_SERVICE、WAITING_*×4）/ 7 结算 / 13 通知 / 4 提醒 / 15 审计；9 项状态机不变量自检通过；二次启动计数完全不变（幂等）。三端账号 `family01`、`worker01`、`admin` 均可登录，`/api/admin/todos` 返回 3 条、`/api/admin/orders` 返回 15 条 |
 | E | 前端页面重构 | 待开始 | 待补充 |
 | F | 测试体系 | 待开始 | 待补充 |
-| G | AGENTS.md 重写 | 待开始 | 待补充 |
+| G | AGENTS.md 重写 | 完成 | 重写为 99 行、14 节，新增“注意事项”8 条（必须提交、必须带测试、交付前全绿等）；删除远端地址、阶段明细、邮箱验证码与激活口令相关条文；`README.md`、`docs/` 引用保持有效 |

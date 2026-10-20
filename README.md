@@ -1,6 +1,6 @@
 # 居家养老智能生活服务平台
 
-Windows 本地项目：Vue 3 前端、Spring Boot 主业务服务、独立模拟支付服务、MySQL 8。工程规则见 `AGENTS.md`；已验证范围和未完成事项见 `docs/implementation-plan.md`。正常订单、主要异常与结算流程已在隔离 MySQL 中实测，真实浏览器已走通预约至模拟结算；正常 3306 与真实邮件仍未验收，目前不应作为正式业务系统使用。
+Windows 本地项目：Vue 3 前端、Spring Boot 主业务服务、独立模拟支付服务、MySQL 8。工程规则见 `AGENTS.md`，进度与验收证据见 `docs/implementation-plan.md`。当前已完成：账号体系改为 username 登录、演示账号与全状态演示数据、配置与脚本统一、Git 本地仓库与分阶段提交；三端页面重构与测试体系仍在推进，暂不应作为正式业务系统使用。
 
 ## 准备环境
 
