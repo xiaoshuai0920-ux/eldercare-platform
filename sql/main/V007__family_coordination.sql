@@ -1,0 +1,60 @@
+CREATE TABLE IF NOT EXISTS elder_identity_claim (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  elder_id BIGINT NOT NULL,
+  account_id BIGINT NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+  requested_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  reviewed_by BIGINT NULL,
+  review_note VARCHAR(500) NULL,
+  reviewed_at DATETIME(3) NULL,
+  active_elder_id BIGINT GENERATED ALWAYS AS (CASE WHEN status='APPROVED' THEN elder_id ELSE NULL END) STORED,
+  active_account_id BIGINT GENERATED ALWAYS AS (CASE WHEN status='APPROVED' THEN account_id ELSE NULL END) STORED,
+  UNIQUE KEY uk_verified_elder (active_elder_id),
+  UNIQUE KEY uk_verified_account (active_account_id),
+  INDEX ix_identity_claim_elder (elder_id,status),
+  INDEX ix_identity_claim_account (account_id,status),
+  CONSTRAINT fk_identity_claim_elder FOREIGN KEY (elder_id) REFERENCES elder_profile(id),
+  CONSTRAINT fk_identity_claim_account FOREIGN KEY (account_id) REFERENCES account(id),
+  CONSTRAINT fk_identity_claim_reviewer FOREIGN KEY (reviewed_by) REFERENCES account(id),
+  CONSTRAINT ck_identity_claim_status CHECK (status IN ('PENDING','APPROVED','REJECTED','REVOKED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS family_dispute (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  elder_id BIGINT NOT NULL,
+  reporter_id BIGINT NOT NULL,
+  reason VARCHAR(500) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'OPEN',
+  reported_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  resolved_by BIGINT NULL,
+  resolution VARCHAR(500) NULL,
+  resolved_at DATETIME(3) NULL,
+  INDEX ix_family_dispute_status (status,reported_at),
+  CONSTRAINT fk_family_dispute_elder FOREIGN KEY (elder_id) REFERENCES elder_profile(id),
+  CONSTRAINT fk_family_dispute_reporter FOREIGN KEY (reporter_id) REFERENCES account(id),
+  CONSTRAINT fk_family_dispute_resolver FOREIGN KEY (resolved_by) REFERENCES account(id),
+  CONSTRAINT ck_family_dispute_status CHECK (status IN ('OPEN','RESOLVED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS order_action_handover (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  action VARCHAR(24) NOT NULL,
+  target_account_id BIGINT NOT NULL,
+  assigned_by BIGINT NOT NULL,
+  reason VARCHAR(500) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+  assigned_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  revoked_by BIGINT NULL,
+  revoked_at DATETIME(3) NULL,
+  active_order_action VARCHAR(80) GENERATED ALWAYS AS (CASE WHEN status='ACTIVE' THEN CONCAT(order_id,':',action) ELSE NULL END) STORED,
+  UNIQUE KEY uk_active_handover (active_order_action),
+  INDEX ix_handover_target (target_account_id,status),
+  INDEX ix_handover_order (order_id,action,assigned_at),
+  CONSTRAINT fk_handover_order FOREIGN KEY (order_id) REFERENCES service_order(id),
+  CONSTRAINT fk_handover_target FOREIGN KEY (target_account_id) REFERENCES account(id),
+  CONSTRAINT fk_handover_assigner FOREIGN KEY (assigned_by) REFERENCES account(id),
+  CONSTRAINT fk_handover_revoker FOREIGN KEY (revoked_by) REFERENCES account(id),
+  CONSTRAINT ck_handover_action CHECK (action IN ('CANCEL','CONFIRM','REVIEW','FEE_CONFIRM','DISPUTE','PAYMENT')),
+  CONSTRAINT ck_handover_status CHECK (status IN ('ACTIVE','REVOKED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
