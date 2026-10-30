@@ -11,12 +11,17 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
+import cn.eldercare.common.PageResult;
 
 @RestController
 @RequestMapping("/api")
@@ -41,18 +46,36 @@ public class WorkerAdminController {
 
     @GetMapping("/admin/workers")
     @PreAuthorize("hasRole('ADMIN')")
-    public List<Map<String, Object>> workers() { return service.workers(); }
+    public PageResult<Map<String, Object>> workers(@RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        return service.workers(page, size);
+    }
 
     @PostMapping("/admin/workers/{workerId}/capabilities")
     @PreAuthorize("hasRole('ADMIN')")
-    public void capability(@PathVariable long workerId, @Valid @RequestBody CapabilityRequest input) {
-        service.capability(workerId, input.itemId(), input.streetId());
+    public void capability(@PathVariable long workerId, @Valid @RequestBody CapabilityRequest input, Authentication auth) {
+        service.capability(Long.parseLong(auth.getName()), workerId, input.itemId(), input.streetId());
     }
 
     @PostMapping("/admin/workers/{workerId}/schedules")
     @PreAuthorize("hasRole('ADMIN')")
-    public void schedule(@PathVariable long workerId, @Valid @RequestBody ScheduleRequest input) {
-        service.schedule(workerId, input.weekday(), input.startTime(), input.endTime());
+    public void schedule(@PathVariable long workerId, @Valid @RequestBody ScheduleRequest input, Authentication auth) {
+        service.schedule(Long.parseLong(auth.getName()), workerId, input.weekday(), input.startTime(), input.endTime());
+    }
+
+    @PutMapping("/admin/workers/{workerId}/schedules/{scheduleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public void updateSchedule(@PathVariable long workerId, @PathVariable long scheduleId,
+            @Valid @RequestBody ScheduleRequest input, Authentication auth) {
+        service.updateSchedule(Long.parseLong(auth.getName()), workerId, scheduleId,
+                input.weekday(), input.startTime(), input.endTime());
+    }
+
+    @DeleteMapping("/admin/workers/{workerId}/schedules/{scheduleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteSchedule(@PathVariable long workerId, @PathVariable long scheduleId,
+            Authentication auth) {
+        service.deleteSchedule(Long.parseLong(auth.getName()), workerId, scheduleId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/admin/workers/{workerId}/capabilities")

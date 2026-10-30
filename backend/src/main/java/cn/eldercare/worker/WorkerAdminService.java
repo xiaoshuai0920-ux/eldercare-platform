@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 
 import cn.eldercare.common.ApiException;
+import cn.eldercare.common.AuditService;
+import cn.eldercare.common.PageQuery;
+import cn.eldercare.common.PageResult;
 import cn.eldercare.identity.AccountEntity;
 import cn.eldercare.identity.AccountMapper;
 import cn.eldercare.identity.AuthService;
@@ -21,8 +24,9 @@ public class WorkerAdminService {
     private final JdbcTemplate jdbc;
     private final AccountMapper accounts;
     private final PasswordEncoder encoder;
-    public WorkerAdminService(JdbcTemplate jdbc, AccountMapper accounts, PasswordEncoder encoder) {
-        this.jdbc = jdbc; this.accounts = accounts; this.encoder = encoder;
+    private final AuditService audit;
+    public WorkerAdminService(JdbcTemplate jdbc, AccountMapper accounts, PasswordEncoder encoder, AuditService audit) {
+        this.jdbc = jdbc; this.accounts = accounts; this.encoder = encoder; this.audit = audit;
     }
 
     @Transactional
@@ -41,18 +45,23 @@ public class WorkerAdminService {
         worker.setStatus("ACTIVE");
         accounts.insert(worker);
         jdbc.update("UPDATE account SET accepting=1 WHERE id=?", worker.getId());
-        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)", adminId, "WORKER_CREATE", "ACCOUNT", worker.getId(), "创建服务人员账号");
+        audit.record(adminId, "WORKER_CREATE", "ACCOUNT", worker.getId(), "创建服务人员账号");
         return worker.getId();
     }
 
-    public List<Map<String, Object>> workers() {
-        return jdbc.queryForList("SELECT id,username,email,display_name,status,accepting FROM account WHERE role='WORKER' ORDER BY id DESC");
+    public PageResult<Map<String, Object>> workers(int page, int size) {
+        PageQuery query = PageQuery.of(page, size);
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM account WHERE role='WORKER'", Long.class);
+        List<Map<String, Object>> items = jdbc.queryForList("SELECT id,username,email,display_name,status,accepting FROM account WHERE role='WORKER' ORDER BY id DESC LIMIT ? OFFSET ?", query.size(), query.offset());
+        return PageResult.of(items, query, total == null ? 0 : total);
     }
 
-    public void capability(long workerId, long itemId, long streetId) {
+    @Transactional
+    public void capability(long adminId, long workerId, long itemId, long streetId) {
         Integer valid = jdbc.queryForObject("SELECT COUNT(*) FROM service_item_area WHERE item_id=? AND street_id=?", Integer.class, itemId, streetId);
         if (valid == null || valid == 0) throw new ApiException(HttpStatus.BAD_REQUEST, "CAPABILITY_SCOPE_INVALID", "项目未覆盖该街道");
         jdbc.update("INSERT INTO worker_capability(worker_id,item_id,street_id,active) VALUES(?,?,?,1) ON DUPLICATE KEY UPDATE active=1", workerId, itemId, streetId);
+        audit.record(adminId, "WORKER_CAPABILITY_GRANT", "ACCOUNT", workerId, "授予服务项目 #" + itemId + " 在街道 #" + streetId + " 的接单能力");
     }
 
     public List<Map<String, Object>> capabilities(long workerId) {
@@ -63,15 +72,52 @@ public class WorkerAdminService {
         return jdbc.queryForList("SELECT id,weekday,start_time,end_time FROM worker_schedule WHERE worker_id=? ORDER BY weekday,start_time",workerId);
     }
 
-    public void schedule(long workerId, int weekday, LocalTime start, LocalTime end) {
+    @Transactional
+    public void schedule(long adminId, long workerId, int weekday, LocalTime start, LocalTime end) {
         if (weekday < 1 || weekday > 7 || !start.isBefore(end)) throw new ApiException(HttpStatus.BAD_REQUEST, "SCHEDULE_INVALID", "工作时段无效");
+        lockWorkerForSchedule(workerId);
         Integer overlap = jdbc.queryForObject("SELECT COUNT(*) FROM worker_schedule WHERE worker_id=? AND weekday=? AND start_time<? AND end_time>?", Integer.class, workerId, weekday, end, start);
         if (overlap != null && overlap > 0) throw new ApiException(HttpStatus.CONFLICT, "SCHEDULE_OVERLAP", "工作时段重叠");
         jdbc.update("INSERT INTO worker_schedule(worker_id,weekday,start_time,end_time) VALUES(?,?,?,?)", workerId, weekday, start, end);
+        audit.record(adminId, "WORKER_SCHEDULE_ADD", "ACCOUNT", workerId, "新增排班：周" + weekday + " " + start + "-" + end);
+    }
+
+    @Transactional
+    public void updateSchedule(long adminId, long workerId, long scheduleId, int weekday, LocalTime start, LocalTime end) {
+        if (weekday < 1 || weekday > 7 || !start.isBefore(end)) throw new ApiException(HttpStatus.BAD_REQUEST, "SCHEDULE_INVALID", "工作时段无效");
+        lockWorkerForSchedule(workerId);
+        List<Map<String,Object>> current = jdbc.queryForList(
+                "SELECT id FROM worker_schedule WHERE worker_id=? AND id=? FOR UPDATE", workerId, scheduleId);
+        if (current.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "SCHEDULE_NOT_FOUND", "排班不存在");
+        Integer overlap = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM worker_schedule WHERE worker_id=? AND weekday=? AND start_time<? AND end_time>? AND id<>?",
+                Integer.class, workerId, weekday, end, start, scheduleId);
+        if (overlap != null && overlap > 0) throw new ApiException(HttpStatus.CONFLICT, "SCHEDULE_OVERLAP", "工作时段重叠");
+        jdbc.update("UPDATE worker_schedule SET weekday=?,start_time=?,end_time=? WHERE worker_id=? AND id=?",
+                weekday, start, end, workerId, scheduleId);
+        audit.record(adminId, "WORKER_SCHEDULE_UPDATE", "ACCOUNT", workerId,
+                "修改排班 #" + scheduleId + "：周" + weekday + " " + start + "-" + end);
+    }
+
+    @Transactional
+    public void deleteSchedule(long adminId, long workerId, long scheduleId) {
+        lockWorkerForSchedule(workerId);
+        int deleted = jdbc.update("DELETE FROM worker_schedule WHERE worker_id=? AND id=?", workerId, scheduleId);
+        if (deleted == 0) throw new ApiException(HttpStatus.NOT_FOUND, "SCHEDULE_NOT_FOUND", "排班不存在");
+        audit.record(adminId, "WORKER_SCHEDULE_DELETE", "ACCOUNT", workerId, "删除排班 #" + scheduleId);
+    }
+
+    private void lockWorkerForSchedule(long workerId) {
+        List<Map<String,Object>> workers = jdbc.queryForList(
+                "SELECT id FROM account WHERE id=? AND role='WORKER' FOR UPDATE", workerId);
+        if (workers.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "WORKER_NOT_FOUND", "服务人员不存在");
     }
 
     public void toggleAccepting(long workerId, boolean accepting) {
-        jdbc.update("UPDATE account SET accepting=? WHERE id=? AND role='WORKER' AND status='ACTIVE'", accepting, workerId);
+        int changed = jdbc.update("UPDATE account SET accepting=? WHERE id=? AND role='WORKER' AND status='ACTIVE'", accepting, workerId);
+        if (changed == 1) {
+            audit.record(workerId, "WORKER_ACCEPTING_TOGGLE", "ACCOUNT", workerId, accepting ? "开启接单" : "关闭接单");
+        }
     }
 
     @Transactional
@@ -93,7 +139,7 @@ public class WorkerAdminService {
             if(!"DISABLED".equals(status))throw new ApiException(HttpStatus.CONFLICT,"WORKER_STATE_CONFLICT","账号未停用");
             jdbc.update("UPDATE account SET status='ACTIVE',accepting=0 WHERE id=?",workerId);
         }else throw new ApiException(HttpStatus.BAD_REQUEST,"WORKER_ACTION_INVALID","人员操作无效");
-        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)",adminId,action,"ACCOUNT",workerId,reason.trim());
+        audit.record(adminId, action, "ACCOUNT", workerId, reason.trim());
     }
 
     @Transactional
@@ -104,6 +150,7 @@ public class WorkerAdminService {
         Integer overlap=jdbc.queryForObject("SELECT COUNT(*) FROM worker_leave WHERE worker_id=? AND status IN ('PENDING','APPROVED') AND start_at<? AND end_at>?",Integer.class,workerId,end,start);
         if(overlap!=null&&overlap>0)throw new ApiException(HttpStatus.CONFLICT,"LEAVE_OVERLAP","请假时间与已有请假重叠");
         jdbc.update("INSERT INTO worker_leave(worker_id,start_at,end_at,reason,status) VALUES(?,?,?,?,'PENDING')",workerId,start,end,reason.trim());
+        audit.record(workerId, "WORKER_LEAVE_REQUEST", "WORKER_LEAVE", workerId, "提交请假：" + start + " 至 " + end + "；" + reason.trim());
     }
 
     public List<Map<String,Object>> workerLeaves(long workerId){
@@ -128,6 +175,8 @@ public class WorkerAdminService {
             if(busy!=null&&busy>0)throw new ApiException(HttpStatus.CONFLICT,"LEAVE_TASK_CONFLICT","请假时段存在已派任务，请先协调任务");
         }
         jdbc.update("UPDATE worker_leave SET status=?,decided_by=?,decided_at=? WHERE id=?",approve?"APPROVED":"REJECTED",adminId,LocalDateTime.now(ZoneId.of("Asia/Shanghai")),leaveId);
+        audit.record(adminId, approve ? "WORKER_LEAVE_APPROVE" : "WORKER_LEAVE_REJECT", "WORKER_LEAVE", leaveId,
+                (approve ? "批准" : "驳回") + "服务人员 #" + workerId + " 的请假申请");
     }
 
     public List<Map<String, Object>> tasks(long workerId) {

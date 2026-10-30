@@ -19,9 +19,9 @@ public class OrderActionAccess {
     }
 
     public void require(long actorId, Map<String, Object> order, String action) {
-        String permission = permission(action);
+        PermissionColumn permission = permission(action);
         long elderId = ((Number) order.get("elder_id")).longValue();
-        family.requirePermission(actorId, elderId, "can_view_service");
+        family.requirePermission(actorId, elderId, PermissionColumn.VIEW_SERVICE);
         family.requirePermission(actorId, elderId, permission);
         long creatorId = ((Number) order.get("creator_id")).longValue();
         if (actorId == creatorId) return;
@@ -31,13 +31,13 @@ public class OrderActionAccess {
         if (handovers.isEmpty()) throw new ApiException(HttpStatus.FORBIDDEN, "ORDER_ACTION_FORBIDDEN", "当前没有此订单操作的有效授权");
     }
 
-    public String permission(String action) {
+    public PermissionColumn permission(String action) {
         return switch (action) {
-            case "CANCEL" -> "can_cancel";
-            case "CONFIRM" -> "can_confirm";
-            case "REVIEW" -> "can_review";
-            case "FEE_CONFIRM" -> "can_confirm_fee";
-            case "DISPUTE", "PAYMENT" -> "can_view_service";
+            case "CANCEL" -> PermissionColumn.CANCEL;
+            case "CONFIRM" -> PermissionColumn.CONFIRM;
+            case "REVIEW" -> PermissionColumn.REVIEW;
+            case "FEE_CONFIRM" -> PermissionColumn.CONFIRM_FEE;
+            case "DISPUTE", "PAYMENT" -> PermissionColumn.VIEW_SERVICE;
             default -> throw new IllegalArgumentException("未知订单操作");
         };
     }

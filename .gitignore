@@ -3,6 +3,7 @@
 # 本地迁移包（含安装包与离线依赖，体积大，仅用于换机交付，不入库）
 /migration/
 /.run/
+/.tmp/
 /.playwright-cli/
 **/dist/
 **/target/
@@ -24,4 +25,6 @@ Thumbs.db
 application-local.yml
 application-local.yaml
 application-local.properties
+!backend/src/main/resources/application-local.yml
+!mock-payment/src/main/resources/application-local.yml
 *.iml

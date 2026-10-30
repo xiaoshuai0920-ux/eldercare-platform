@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +26,7 @@ public class FamilyController {
     public FamilyController(FamilyService service) { this.service = service; }
 
     public record CreateElderRequest(@NotBlank @Size(max = 80) String fullName, LocalDate birthDate, boolean declaresAuthorization) { }
+    public record UpdateElderRequest(@NotBlank @Size(max = 80) String fullName, LocalDate birthDate) { }
     public record InviteRequest(@NotBlank @Size(max = 32) String username, @NotNull FamilyService.Permissions permissions) { }
 
     @PostMapping("/elders")
@@ -37,6 +39,11 @@ public class FamilyController {
 
     @GetMapping("/elders/{elderId}")
     public FamilyService.ElderView get(@PathVariable long elderId, Authentication auth) { return service.getElder(actor(auth), elderId); }
+
+    @PutMapping("/elders/{elderId}")
+    public FamilyService.ElderView update(@PathVariable long elderId, @Valid @RequestBody UpdateElderRequest input, Authentication auth) {
+        return service.updateElder(actor(auth), elderId, input.fullName(), input.birthDate());
+    }
 
     @PostMapping("/elders/{elderId}/invitations")
     public Map<String, Long> invite(@PathVariable long elderId, @Valid @RequestBody InviteRequest input, Authentication auth) {

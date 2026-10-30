@@ -15,8 +15,11 @@ Write-Host '版本：'
 & npm --version
 & mysql --version
 
-$requiredKeys = @('DB_PASSWORD', 'BOOTSTRAP_ADMIN_PASSWORD', 'DEMO_ACCOUNT_PASSWORD', 'PAYMENT_SERVICE_TOKEN', 'PAYMENT_CONSOLE_TOKEN')
+$requiredKeys = @('DB_USER', 'DB_PASSWORD', 'PAYMENT_DB_USER', 'PAYMENT_DB_PASSWORD', 'BOOTSTRAP_ADMIN_PASSWORD', 'DEMO_ACCOUNT_PASSWORD', 'PAYMENT_SERVICE_TOKEN', 'PAYMENT_CONSOLE_TOKEN')
 $settings = Read-DotEnvFile -Path (Join-Path $root '.env')
+$null = Get-MySqlPort -Settings $settings
+$null = Get-ConfiguredPort -Settings $settings -Name 'VITE_PORT' -Default '5173'
 $missing = @($requiredKeys | Where-Object { -not $settings.Contains($_) -or [string]::IsNullOrWhiteSpace($settings[$_]) })
 if ($missing.Count -gt 0) { throw "以下 .env 键未填写：$($missing -join '、')。可参考 .env.example。" }
-Write-Host '.env 必填键齐全；数据库连接请确认 MySQL 8 在 127.0.0.1:3306 可达（本检查不登录数据库）。'
+if ($settings['DB_USER'] -eq 'root' -or $settings['PAYMENT_DB_USER'] -eq 'root') { throw '两个服务不能使用 MySQL root 作为运行账号。' }
+Write-Host '.env 本机运行必填键齐全；本检查不登录数据库。init-db.ps1 和 test.ps1 另需迁移账号与测试账号配置。'

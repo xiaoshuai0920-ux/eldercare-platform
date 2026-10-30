@@ -10,10 +10,12 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/transactions")
+@Profile("local")
 public class TransactionController {
     private final JdbcTemplate jdbc;
     private final String serviceToken;
@@ -53,16 +56,23 @@ public class TransactionController {
         require(token, consoleToken);
         if (request.attemptRef().length() > 64 || request.orderRef() < 1 || request.settlementVersion() < 1)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "交易标识或版本无效");
-        List<Transaction> existing = find(request.attemptRef());
-        if (!existing.isEmpty()) {
-            Transaction prior = existing.getFirst();
-            if (prior.orderRef() != request.orderRef() || prior.settlementVersion() != request.settlementVersion()
-                    || prior.amount().compareTo(request.amount()) != 0)
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "交易标识与已有交易不一致");
-            return prior;
+        Transaction byAttempt = findForUpdate(request.attemptRef());
+        if (byAttempt != null) return requireSamePayload(byAttempt, request);
+
+        Transaction activeForOrder = findActiveForUpdate(request.orderRef(), request.settlementVersion());
+        if (activeForOrder != null) return requireSameOrderAmount(activeForOrder, request);
+
+        try {
+            jdbc.update("INSERT INTO simulated_transaction(attempt_ref,order_ref,settlement_version,amount,status) VALUES(?,?,?,?,'PROCESSING')",
+                    request.attemptRef(),request.orderRef(),request.settlementVersion(),request.amount());
+        } catch (DuplicateKeyException race) {
+            // The generated unique key is the final guard when two different attemptRefs race.
+            Transaction winnerByAttempt = findForUpdate(request.attemptRef());
+            if (winnerByAttempt != null) return requireSamePayload(winnerByAttempt, request);
+            Transaction winnerForOrder = findActiveForUpdate(request.orderRef(), request.settlementVersion());
+            if (winnerForOrder != null) return requireSameOrderAmount(winnerForOrder, request);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "交易标识或订单版本已存在", race);
         }
-        jdbc.update("INSERT INTO simulated_transaction(attempt_ref,order_ref,settlement_version,amount,status) VALUES(?,?,?,?,'PROCESSING')",
-                request.attemptRef(),request.orderRef(),request.settlementVersion(),request.amount());
         Long id = jdbc.queryForObject("SELECT id FROM simulated_transaction WHERE attempt_ref=?",Long.class,request.attemptRef());
         jdbc.update("INSERT INTO simulated_transaction_event(transaction_id,old_status,new_status,actor_label) VALUES(?,NULL,'PROCESSING','CONSOLE')",id);
         return get(request.attemptRef());
@@ -91,6 +101,28 @@ public class TransactionController {
         List<Transaction> rows = find(ref);
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "交易未登记");
         return rows.getFirst();
+    }
+    private Transaction findForUpdate(String ref) {
+        List<Transaction> rows = jdbc.query("SELECT attempt_ref,order_ref,settlement_version,amount,status FROM simulated_transaction WHERE attempt_ref=? FOR UPDATE",
+                (row,n)->new Transaction(row.getString(1),row.getLong(2),row.getInt(3),row.getBigDecimal(4),row.getString(5)),ref);
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+    private Transaction findActiveForUpdate(long orderRef, int version) {
+        String activeKey = orderRef + ":" + version;
+        List<Transaction> rows = jdbc.query("SELECT attempt_ref,order_ref,settlement_version,amount,status FROM simulated_transaction WHERE active_order_version=? FOR UPDATE",
+                (row,n)->new Transaction(row.getString(1),row.getLong(2),row.getInt(3),row.getBigDecimal(4),row.getString(5)),activeKey);
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+    private Transaction requireSamePayload(Transaction prior, CreateRequest request) {
+        if (prior.orderRef() != request.orderRef() || prior.settlementVersion() != request.settlementVersion()
+                || prior.amount().compareTo(request.amount()) != 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "交易标识与已有交易不一致");
+        return prior;
+    }
+    private Transaction requireSameOrderAmount(Transaction prior, CreateRequest request) {
+        if (prior.amount().compareTo(request.amount()) != 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "订单版本已有金额不同的交易");
+        return prior;
     }
     private List<Transaction> find(String ref) {
         return jdbc.query("SELECT attempt_ref,order_ref,settlement_version,amount,status FROM simulated_transaction WHERE attempt_ref=?",

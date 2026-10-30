@@ -1,0 +1,8 @@
+{
+  "name": "居家养老智能生活服务平台",
+  "appid": "",
+  "versionName": "0.1.0",
+  "versionCode": "1",
+  "h5": { "router": { "mode": "hash" } },
+  "mp-weixin": { "appid": "wx122b71373323cec9", "setting": { "urlCheck": false } }
+}

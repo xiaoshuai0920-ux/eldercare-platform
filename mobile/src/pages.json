@@ -1,0 +1,14 @@
+{
+  "pages": [
+    { "path": "pages/dashboard/index", "style": { "navigationBarTitleText": "居家养老" } },
+    { "path": "pages/booking/index", "style": { "navigationBarTitleText": "预约服务" } },
+    { "path": "pages/orders/index", "style": { "navigationBarTitleText": "我的订单" } },
+    { "path": "pages/more/index", "style": { "navigationBarTitleText": "更多服务" } },
+    { "path": "pages/family/index", "style": { "navigationBarTitleText": "家庭授权" } },
+    { "path": "pages/reminders/index", "style": { "navigationBarTitleText": "生活提醒" } },
+    { "path": "pages/messages/index", "style": { "navigationBarTitleText": "消息通知" } },
+    { "path": "pages/worker/index", "style": { "navigationBarTitleText": "服务工作台" } },
+    { "path": "pages/login/index", "style": { "navigationBarTitleText": "账号登录" } }
+  ],
+  "globalStyle": { "navigationBarTextStyle": "black", "navigationBarBackgroundColor": "#ffffff", "backgroundColor": "#f5f8fb" }
+}

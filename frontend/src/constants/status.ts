@@ -1,11 +1,7 @@
-export type StatusTone = 'neutral' | 'progress' | 'action' | 'success' | 'danger'
+import type { OrderStatus, StatusMeta, StatusTone, Tone } from '@/types'
 
-export interface StatusMeta {
-  label: string
-  tone: StatusTone
-}
-
-export const ORDER_STATUS: Record<string, StatusMeta> = {
+/** 状态中文名与色调的唯一来源：与后端 constants/status.ts 保持一致 */
+export const ORDER_STATUS: Record<OrderStatus, StatusMeta> = {
   WAITING_ASSIGNMENT: { label: '待派单', tone: 'neutral' },
   WAITING_ACCEPTANCE: { label: '待接单', tone: 'action' },
   WAITING_SERVICE: { label: '待服务', tone: 'progress' },
@@ -45,6 +41,30 @@ export const PRIORITY: Record<string, StatusMeta> = {
   HIGH: { label: '高优先级', tone: 'danger' },
 }
 
+export const LEAVE_STATUS: Record<string, StatusMeta> = {
+  PENDING: { label: '待审批', tone: 'action' },
+  APPROVED: { label: '已批准', tone: 'success' },
+  REJECTED: { label: '已拒绝', tone: 'danger' },
+}
+
+export const AUTH_STATUS: Record<string, StatusMeta> = {
+  ACTIVE: { label: '生效中', tone: 'success' },
+  REVOKED: { label: '已撤回', tone: 'neutral' },
+}
+
+export const VERIFY_STATUS: Record<string, StatusMeta> = {
+  VERIFIED: { label: '已核验', tone: 'success' },
+  PENDING: { label: '待核验', tone: 'action' },
+  REVOKED: { label: '已撤回', tone: 'neutral' },
+}
+
+export const ORDER_GROUP: Record<string, { label: string; tone: Tone }> = {
+  action: { label: '待你处理', tone: 'action' },
+  active: { label: '进行中', tone: 'progress' },
+  upcoming: { label: '待服务', tone: 'progress' },
+  done: { label: '已完成', tone: 'success' },
+}
+
 export function statusMeta(dict: Record<string, StatusMeta>, value: string): StatusMeta {
-  return dict[value] ?? { label: value || '未知', tone: 'neutral' }
+  return dict[value] ?? { label: value || '未知', tone: 'neutral' as StatusTone }
 }

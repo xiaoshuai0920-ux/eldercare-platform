@@ -1,61 +1,351 @@
-<template>
-  <WorkspaceLayout role="USER">
-    <p class="eyebrow">服务预约</p><h1 class="page-title">为日常生活，安排一份安心。</h1>
-    <p class="muted">选择服务与服务对象，提交后由管理员人工派单。</p>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    <div class="filters"><el-select v-model="category" placeholder="全部分类" clearable @change="loadItems"><el-option label="助餐" value="MEAL" /><el-option label="保洁" value="CLEANING" /><el-option label="陪诊" value="ESCORT" /></el-select><el-input v-model="search" placeholder="搜索服务名称" clearable /></div><div class="recommend-controls"><el-select v-model="recommendElderId" placeholder="选择服务对象"><el-option v-for="elder in elders" :key="elder.id" :label="elder.fullName" :value="elder.id" /></el-select><el-select v-model="recommendStreetId" placeholder="选择服务街道"><el-option v-for="area in streets" :key="area.id" :label="area.full_name" :value="area.id" /></el-select><button class="text-button" @click="loadRecommended">按覆盖与偏好查看</button><button v-if="recommended" class="text-button" @click="loadItems">返回全部服务</button></div>
-    <div v-if="filtered.length" class="service-grid"><article v-for="item in filtered" :key="item.id" class="surface service-card"><span class="eyebrow">{{ categoryName(item.category) }}</span><h2>{{ item.name }}</h2><p>{{ item.description }}</p><p v-if="item.reason" class="reason">{{ item.reason }}</p><p class="muted">{{ item.rule_text }}</p><div class="card-bottom"><strong>¥{{ item.unit_price }}{{ item.pricing_model === 'HOURLY' ? ' / 小时' : ' / 次' }}</strong><button class="primary" @click="choose(item)">预约服务</button></div></article></div>
-    <div v-else-if="!error" class="empty">当前没有符合条件的服务项目。</div>
-    <el-dialog v-model="bookingOpen" :title="selected?.name || '预约服务'" width="min(94vw, 600px)"><el-form label-position="top">
-      <el-form-item label="服务对象"><el-select v-model="form.elderId" placeholder="请选择已授权对象" style="width:100%"><el-option v-for="elder in elders" :key="elder.id" :label="elder.fullName" :value="elder.id" /></el-select></el-form-item>
-      <el-form-item label="服务街道"><el-select v-model="form.streetId" placeholder="请选择覆盖街道" style="width:100%"><el-option v-for="area in bookingStreets" :key="area.id" :label="area.full_name" :value="area.id" /></el-select></el-form-item>
-      <el-form-item label="详细地址"><el-input v-model="form.address" maxlength="300" /></el-form-item>
-      <el-form-item label="开始时间"><el-input v-model="form.startAt" type="datetime-local" /></el-form-item>
-      <el-form-item label="服务时长（分钟）"><el-input-number v-model="form.durationMinutes" :min="selected?.min_minutes || 1" :max="selected?.max_minutes || 1440" :step="30" /></el-form-item>
-      <p class="muted">提交时以后端校验的价格和时段为准；预约成功仅表示等待派单。</p>
-    </el-form><template #footer><button class="primary" :disabled="busy" @click="book">提交预约</button></template></el-dialog>
-  </WorkspaceLayout>
-</template>
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
-import WorkspaceLayout from '../../layouts/WorkspaceLayout.vue'
-import { api } from '../../api/client'
-type Item = { id: number; category: string; name: string; description: string; pricing_model: string; unit_price: number; min_minutes: number; max_minutes: number; rule_text: string;reason?:string }
-type Elder = { id: number; fullName: string }
-type Area = { id: number; level: string; name: string; full_name: string }
-const router = useRouter()
-const items = ref<Item[]>([]), elders = ref<Elder[]>([]), streets = ref<Area[]>([]), bookingStreets = ref<Area[]>([])
-const category = ref(''), search = ref(''), error = ref(''), bookingOpen = ref(false), busy = ref(false)
-const recommendElderId=ref<number>(),recommendStreetId=ref<number>(),recommended=ref(false)
-const selected = ref<Item | null>(null)
-const form = reactive({ elderId: undefined as number | undefined, streetId: undefined as number | undefined, address: '', startAt: '', durationMinutes: 60 })
-const filtered = computed(() => items.value.filter(item => item.name.includes(search.value.trim())&&(!category.value||item.category===category.value)))
-function categoryName(value: string) { return ({ MEAL: '助餐', CLEANING: '保洁', ESCORT: '陪诊' } as Record<string,string>)[value] || value }
-async function loadItems() { try { items.value = await api<Item[]>(`/catalog/items${category.value ? `?category=${category.value}` : ''}`); recommended.value=false;error.value = '' } catch (reason) { error.value = reason instanceof Error ? reason.message : '服务加载失败' } }
-async function loadRecommended(){if(!recommendElderId.value||!recommendStreetId.value){ElMessage.error('请选择服务对象和街道');return}try{items.value=await api<Item[]>(`/catalog/recommendations?elderId=${recommendElderId.value}&streetId=${recommendStreetId.value}`);recommended.value=true;error.value=''}catch(reason){ElMessage.error(reason instanceof Error?reason.message:'推荐加载失败')}}
-async function choose(item: Item) {
-  try {
-    bookingStreets.value = await api<Area[]>(`/catalog/items/${item.id}/areas`)
+  import { computed, onMounted, reactive, ref } from 'vue'
+  import { useRouter } from 'vue-router'
+  import PageHeader from '@/components/ui/PageHeader.vue'
+  import AppButton from '@/components/ui/AppButton.vue'
+  import AppField from '@/components/ui/AppField.vue'
+  import AppInput from '@/components/ui/AppInput.vue'
+  import AppSelect from '@/components/ui/AppSelect.vue'
+  import AppSegmented from '@/components/ui/AppSegmented.vue'
+  import AppDialog from '@/components/ui/AppDialog.vue'
+  import AppIcon from '@/components/ui/AppIcon.vue'
+  import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
+  import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+  import EmptyState from '@/components/ui/EmptyState.vue'
+  import RecommendationPanel from '@/components/ui/RecommendationPanel.vue'
+  import { useCatalogStore } from '@/stores/catalog'
+  import { useFamilyStore } from '@/stores/family'
+  import { useUiStore } from '@/stores/ui'
+  import { userApi } from '@/api/endpoints'
+  import { ApiError } from '@/api/client'
+  import { addDays, initial, isPast, money, todayIso, toIsoLocal } from '@/utils/format'
+  import type { CatalogItem } from '@/api/types'
+
+  const router = useRouter()
+  const catalog = useCatalogStore()
+  const family = useFamilyStore()
+  const ui = useUiStore()
+
+  const category = ref('ALL')
+  const keyword = ref('')
+  const filtered = computed(() => catalog.filter(category.value, keyword.value))
+
+  const bookingOpen = ref(false)
+  const selected = ref<CatalogItem | null>(null)
+  const step = ref(1)
+  const submitting = ref(false)
+  const submitError = ref('')
+  const areas = ref<{ id: number; full_name: string }[]>([])
+
+  const form = reactive({
+    elderId: 0,
+    streetId: 0,
+    address: '',
+    // 默认明天上午，避免默认值早于当前时间被后端拒绝
+    date: addDays(todayIso(), 1),
+    time: '09:00',
+    duration: 60,
+  })
+
+  /** 日期选择器的最小可选值：不允许选过去 */
+  const minDate = todayIso()
+
+  const amount = computed(() => {
+    const item = selected.value
+    if (!item) return 0
+    return item.pricing_model === 'HOURLY' ? (item.unit_price * form.duration) / 60 : item.unit_price
+  })
+
+  const durationOptions = computed(() => {
+    const item = selected.value
+    if (!item) return [60]
+    const min = item.min_minutes ?? 60
+    const max = item.max_minutes ?? min + 60
+    const list: number[] = []
+    for (let value = min; value <= max; value += 30) list.push(value)
+    return list
+  })
+
+  onMounted(() => {
+    catalog.load()
+    family.load()
+  })
+
+  async function openBooking(item: CatalogItem) {
     selected.value = item
-    form.durationMinutes = item.min_minutes
-    form.streetId = recommended.value && bookingStreets.value.some(area => area.id === recommendStreetId.value) ? recommendStreetId.value : undefined
-    if (recommended.value) form.elderId = recommendElderId.value
+    step.value = 1
+    submitError.value = ''
+    form.duration = item.min_minutes ?? 60
+    form.elderId = family.elders[0]?.id ?? 0
+    try {
+      areas.value = await catalog.itemAreas(item.id)
+      form.streetId = areas.value[0]?.id ?? 0
+    } catch (reason) {
+      submitError.value = reason instanceof ApiError ? reason.message : '服务范围加载失败'
+      areas.value = []
+    }
     bookingOpen.value = true
-  } catch (reason) { ElMessage.error(reason instanceof Error ? reason.message : '服务范围加载失败') }
-}
-async function book() {
-  if (!selected.value || !form.elderId || !form.streetId || !form.address.trim() || !form.startAt) { ElMessage.error('请完整填写预约信息'); return }
-  busy.value = true
-  try {
-    await api('/orders', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ elderId: form.elderId, itemId: selected.value.id, streetId: form.streetId, address: form.address.trim(), startAt: form.startAt, durationMinutes: form.durationMinutes }) })
-    ElMessage.success('预约已提交，等待人工派单'); bookingOpen.value = false; await router.push('/user/orders')
-  } catch (reason) { ElMessage.error(reason instanceof Error ? reason.message : '预约失败') }
-  finally { busy.value = false }
-}
-onMounted(async () => { await loadItems(); try { [elders.value, streets.value] = await Promise.all([api<Elder[]>('/elders'), api<Area[]>('/catalog/areas').then(rows => rows.filter(row => row.level === 'STREET'))]) } catch (reason) { error.value = reason instanceof Error ? reason.message : '基础数据加载失败' } })
+  }
+
+  async function openRecommendedBooking(item: CatalogItem, elderId: number, streetId: number) {
+    await openBooking(item)
+    form.elderId = elderId
+    if (areas.value.some((area) => area.id === streetId)) form.streetId = streetId
+  }
+
+  function next() {
+    if (step.value === 1 && (!form.elderId || !form.streetId || !form.address.trim())) {
+      submitError.value = '请选择服务对象、街道并填写详细地址'
+      return
+    }
+    if (step.value === 2 && isPast(form.date, form.time)) {
+      submitError.value = '预约时间不能早于当前时间，请重新选择日期与时段'
+      return
+    }
+    submitError.value = ''
+    if (step.value < 3) step.value += 1
+  }
+
+  async function submit() {
+    if (!selected.value) return
+    submitting.value = true
+    submitError.value = ''
+    try {
+      await userApi.createOrder({
+        elderId: form.elderId,
+        itemId: selected.value.id,
+        streetId: form.streetId,
+        address: form.address.trim(),
+        startAt: toIsoLocal(form.date, form.time),
+        durationMinutes: form.duration,
+      })
+      bookingOpen.value = false
+      ui.notify('预约已提交，等待管理员派单')
+      await router.push('/user/orders')
+    } catch (reason) {
+      submitError.value = reason instanceof ApiError ? reason.message : '提交失败，请稍后重试'
+    } finally {
+      submitting.value = false
+    }
+  }
 </script>
-<style scoped>
-.filters,.recommend-controls { display:flex; gap:14px; margin:28px 0 18px; align-items:center;flex-wrap:wrap }.filters .el-select,.recommend-controls .el-select { width:190px; }.filters .el-input { max-width:340px; }.recommend-controls{margin-top:0}.service-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }.service-card { padding:28px; display:flex; flex-direction:column; min-height:290px; }.service-card h2 { margin:12px 0; font-size:25px; }.service-card p { line-height:1.6; }.reason{color:#0e765b;font-weight:700}.card-bottom { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:auto; }.card-bottom strong { font-size:21px; }.form-error { color:#b34939; }@media(max-width:900px){.service-grid{grid-template-columns:1fr 1fr}}@media(max-width:630px){.service-grid{grid-template-columns:1fr}.filters{flex-direction:column}}
-</style>
+
+<template>
+  <PageHeader
+    eyebrow="服务预约"
+    title="为日常生活，安排一份安心。"
+    description="选择服务与服务对象，提交后由管理员人工派单。价格与时段以提交时后端校验为准。"
+  >
+    <template #actions>
+      <AppButton variant="secondary" to="/user/orders">查看我的订单</AppButton>
+    </template>
+  </PageHeader>
+
+  <RecommendationPanel
+    :elders="family.elders"
+    :areas="catalog.areas"
+    :items="catalog.items"
+    @select="openRecommendedBooking"
+  />
+
+  <section class="card" style="margin-top: var(--sp-6)" aria-label="筛选与推荐">
+    <div class="toolbar" style="border-bottom: 0">
+      <AppSegmented v-model="category" :options="catalog.categories" aria-label="服务分类" />
+      <div class="input-affix" style="flex: 1 1 260px">
+        <AppIcon name="search" size="18px" />
+        <label class="visually-hidden" for="svc-search">搜索服务名称</label>
+        <AppInput id="svc-search" v-model="keyword" type="search" placeholder="搜索服务名称，如「陪诊」" />
+      </div>
+      <span class="chip">服务对象 {{ family.elders.length }} 位</span>
+    </div>
+  </section>
+
+  <p class="muted" style="margin-top: var(--sp-5); font-size: var(--fs-13)">
+    共 <span class="num">{{ filtered.length }}</span> 个服务项目 · 金额以提交时后端校验为准
+  </p>
+
+  <ErrorBanner
+    v-if="catalog.error"
+    :title="catalog.error"
+    description="服务目录加载失败，请稍后重试。"
+    style="margin-top: var(--sp-4)"
+  >
+    <template #action>
+      <AppButton variant="secondary" compact style="margin-left: auto" @click="catalog.load(true)"
+        >重新加载</AppButton
+      >
+    </template>
+  </ErrorBanner>
+
+  <div v-if="catalog.loading" class="card card--pad" style="margin-top: var(--sp-4)">
+    <SkeletonBlock :rows="4" />
+  </div>
+  <section v-else class="grid grid--3" style="margin-top: var(--sp-4)" aria-label="服务项目列表">
+    <article v-for="item in filtered" :key="item.id" class="card card--hover svc-card">
+      <p class="svc-card__tag">{{ catalog.categoryLabel(item.category) }}</p>
+      <h2 class="svc-card__title">{{ item.name }}</h2>
+      <p class="svc-card__desc">{{ item.description }}</p>
+      <p class="muted" style="font-size: var(--fs-13)">{{ item.rule_text }}</p>
+      <div class="svc-card__foot">
+        <p class="price">
+          <span class="num">{{ money(item.unit_price) }}</span>
+          <span class="price__unit">{{ catalog.priceUnit(item) }}</span>
+        </p>
+        <AppButton @click="openBooking(item)">预约服务</AppButton>
+      </div>
+    </article>
+    <EmptyState
+      v-if="!filtered.length"
+      title="当前没有符合条件的服务项目"
+      description="换个分类或清空搜索词再试。"
+    />
+  </section>
+
+  <AppDialog
+    v-model="bookingOpen"
+    wide
+    :title="selected ? `预约${selected.name}` : '预约服务'"
+    subtitle="按三步确认，提交后进入人工派单，不会立即扣费。"
+  >
+    <template #head-end>
+      <div class="stepper" aria-label="预约进度">
+        <div class="step" :class="{ 'step--active': step === 1, 'step--done': step > 1 }">
+          <span class="step__dot">1</span>选对象
+        </div>
+        <span class="step__line" aria-hidden="true" />
+        <div class="step" :class="{ 'step--active': step === 2, 'step--done': step > 2 }">
+          <span class="step__dot">2</span>选时段
+        </div>
+        <span class="step__line" aria-hidden="true" />
+        <div class="step" :class="{ 'step--active': step === 3 }">
+          <span class="step__dot">3</span>确认金额
+        </div>
+      </div>
+    </template>
+
+    <div v-if="submitError" class="banner banner--error" role="alert">
+      <AppIcon name="alert" />
+      <div class="banner__body">
+        <p class="banner__title">无法继续</p>
+        <p class="banner__desc">{{ submitError }}</p>
+      </div>
+    </div>
+
+    <div v-show="step === 1">
+      <fieldset style="border: 0; padding: 0; margin: 0">
+        <legend class="field__label" style="margin-bottom: var(--sp-3)">
+          服务对象<span class="req" aria-hidden="true">*</span>
+        </legend>
+        <div class="grid grid--3" style="gap: var(--sp-3)">
+          <button
+            v-for="elder in family.elders"
+            :key="elder.id"
+            class="elder"
+            type="button"
+            :aria-pressed="form.elderId === elder.id"
+            style="padding: var(--sp-4)"
+            @click="form.elderId = elder.id"
+          >
+            <span class="elder__top">
+              <span class="avatar" aria-hidden="true">{{ initial(elder.fullName) }}</span>
+              <span>
+                <span class="elder__name" style="font-size: var(--fs-16)">{{ elder.fullName }}</span>
+                <span class="elder__meta" style="display: block"
+                  >{{ family.ageOf(elder.birthDate) ?? '—' }} 岁</span
+                >
+              </span>
+            </span>
+          </button>
+        </div>
+        <p v-if="!family.elders.length" class="muted" style="font-size: var(--fs-13)">
+          还没有可预约的服务对象档案。
+        </p>
+      </fieldset>
+
+      <div class="grid grid--2" style="gap: var(--sp-4); margin-top: var(--sp-5)">
+        <AppField label="服务街道" html-for="bk-street" required help="仅列出该服务项目覆盖的街道。">
+          <AppSelect id="bk-street" v-model.number="form.streetId">
+            <option v-for="area in areas" :key="area.id" :value="area.id">{{ area.full_name }}</option>
+          </AppSelect>
+        </AppField>
+        <AppField
+          label="详细地址"
+          html-for="bk-address"
+          required
+          help="服务人员按此地址上门，请保留楼栋与门牌号。"
+        >
+          <AppInput
+            id="bk-address"
+            v-model="form.address"
+            autocomplete="street-address"
+            placeholder="例如：安宁区东湖街道梧桐里 3 号楼 502"
+          />
+        </AppField>
+      </div>
+    </div>
+
+    <div v-show="step === 2">
+      <div class="grid grid--3" style="gap: var(--sp-4)">
+        <AppField label="服务日期" html-for="bk-date" required>
+          <AppInput id="bk-date" v-model="form.date" type="date" :min="minDate" />
+        </AppField>
+        <AppField label="开始时间" html-for="bk-time" required>
+          <AppInput id="bk-time" v-model="form.time" type="time" />
+        </AppField>
+        <AppField label="服务时长" html-for="bk-duration" required>
+          <AppSelect id="bk-duration" v-model.number="form.duration">
+            <option v-for="minutes in durationOptions" :key="minutes" :value="minutes">
+              {{ minutes }} 分钟
+            </option>
+          </AppSelect>
+        </AppField>
+      </div>
+      <p class="muted" style="font-size: var(--fs-13); margin-top: var(--sp-4)">
+        该项目需提前 {{ Math.round((selected?.advance_minutes ?? 0) / 60) }} 小时预约，可服务时段
+        {{ selected?.available_from?.slice(0, 5) }}–{{ selected?.available_to?.slice(0, 5) }}。
+      </p>
+    </div>
+
+    <div v-show="step === 3">
+      <div
+        class="card"
+        style="padding: var(--sp-5); background: var(--c-surface-sunken); border-color: var(--c-line-soft)"
+      >
+        <div class="detail-row">
+          <dt>服务项目</dt>
+          <dd>{{ selected?.name }}</dd>
+        </div>
+        <div class="detail-row">
+          <dt>服务对象</dt>
+          <dd>{{ family.elders.find((elder) => elder.id === form.elderId)?.fullName ?? '—' }}</dd>
+        </div>
+        <div class="detail-row">
+          <dt>上门地址</dt>
+          <dd>{{ areas.find((area) => area.id === form.streetId)?.full_name }} · {{ form.address }}</dd>
+        </div>
+        <div class="detail-row">
+          <dt>服务时段</dt>
+          <dd class="num">{{ form.date }} {{ form.time }}（{{ form.duration }} 分钟）</dd>
+        </div>
+        <div class="detail-row">
+          <dt>项目规则</dt>
+          <dd>{{ selected?.rule_text }}</dd>
+        </div>
+      </div>
+      <div class="row" style="justify-content: space-between; align-items: flex-end; margin-top: var(--sp-5)">
+        <div>
+          <p class="muted" style="font-size: var(--fs-13)">预计金额（提交时以后端校验为准）</p>
+          <p class="price" style="font-size: var(--fs-30)">{{ money(amount) }}</p>
+        </div>
+        <span class="tag tag--action">提交后等待人工派单</span>
+      </div>
+    </div>
+
+    <template #footer>
+      <p class="hint">提交后可在「我的订单」查看派单进度。</p>
+      <AppButton variant="ghost" :disabled="step === 1" @click="step -= 1">上一步</AppButton>
+      <AppButton v-if="step < 3" @click="next">下一步</AppButton>
+      <AppButton v-else :loading="submitting" @click="submit">提交预约</AppButton>
+    </template>
+  </AppDialog>
+</template>

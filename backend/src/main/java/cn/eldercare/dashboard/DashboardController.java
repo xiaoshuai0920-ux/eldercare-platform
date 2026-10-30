@@ -1,13 +1,15 @@
 package cn.eldercare.dashboard;
 
-import java.util.List;
-import java.util.Map;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Map;
 
 import cn.eldercare.common.ApiException;
+import cn.eldercare.common.PageQuery;
+import cn.eldercare.common.PageResult;
+import cn.eldercare.common.SqlValues;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,8 +21,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 public class DashboardController {
-    private final JdbcTemplate jdbc;
-    public DashboardController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final List<String> ASSIGNABLE_STATUSES =
+            List.of("WAITING_ASSIGNMENT", "WAITING_ACCEPTANCE", "WAITING_SERVICE");
+
+    private final DashboardRepository queries;
+
+    public DashboardController(DashboardRepository queries) { this.queries = queries; }
 
     public record UserDashboard(long waiting, long active, long completed, List<Map<String, Object>> recentOrders) { }
     public record WorkerDashboard(boolean accepting, long pending, long active, List<Map<String, Object>> tasks) { }
@@ -36,85 +43,96 @@ public class DashboardController {
     @PreAuthorize("hasRole('USER')")
     public UserDashboard user(Authentication auth) {
         long actor = Long.parseLong(auth.getName());
-        String from = " FROM service_order o JOIN family_grant g ON g.elder_id=o.elder_id WHERE g.account_id=? AND g.status='ACTIVE' AND g.can_view_service=1";
-        long waiting = count("SELECT COUNT(*)" + from + " AND o.status IN ('WAITING_ASSIGNMENT','WAITING_ACCEPTANCE','WAITING_SERVICE')", actor);
-        long active = count("SELECT COUNT(*)" + from + " AND o.status IN ('IN_SERVICE','WAITING_CONFIRMATION')", actor);
-        long completed = count("SELECT COUNT(*)" + from + " AND o.status='COMPLETED'", actor);
-        List<Map<String, Object>> recent = jdbc.queryForList("SELECT o.id,o.item_name_snapshot,o.start_at,o.status,o.payable_amount" + from + " ORDER BY o.id DESC LIMIT 5", actor);
-        return new UserDashboard(waiting, active, completed, recent);
+        return new UserDashboard(
+                queries.userOrders(actor, List.of("WAITING_ASSIGNMENT", "WAITING_ACCEPTANCE", "WAITING_SERVICE")),
+                queries.userOrders(actor, List.of("IN_SERVICE", "WAITING_CONFIRMATION")),
+                queries.userOrders(actor, List.of("COMPLETED")),
+                queries.userRecentOrders(actor));
     }
 
     @GetMapping("/worker/dashboard")
     @PreAuthorize("hasRole('WORKER')")
     public WorkerDashboard worker(Authentication auth) {
         long actor = Long.parseLong(auth.getName());
-        Integer acceptingValue = jdbc.queryForObject("SELECT accepting FROM account WHERE id=?", Integer.class, actor);
-        long pending = count("SELECT COUNT(*) FROM assignment WHERE worker_id=? AND status='PENDING'", actor);
-        long active = count("SELECT COUNT(*) FROM assignment a JOIN service_order o ON o.id=a.order_id WHERE a.worker_id=? AND a.status='ACCEPTED' AND o.status IN ('WAITING_SERVICE','IN_SERVICE','WAITING_CONFIRMATION')", actor);
-        List<Map<String, Object>> tasks = jdbc.queryForList("SELECT o.id AS order_id,o.item_name_snapshot,COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.status,a.status AS assignment_status FROM assignment a JOIN service_order o ON o.id=a.order_id LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('ASSIGNED','IN_SERVICE','SUBMITTED') WHERE a.worker_id=? AND a.status IN ('PENDING','ACCEPTED') AND o.status IN ('WAITING_ACCEPTANCE','WAITING_SERVICE','IN_SERVICE','WAITING_CONFIRMATION') ORDER BY COALESCE(s.start_at,o.start_at) LIMIT 6", actor);
-        return new WorkerDashboard(acceptingValue != null && acceptingValue != 0, pending, active, tasks);
+        return new WorkerDashboard(
+                queries.workerAccepting(actor),
+                queries.workerPendingAssignments(actor),
+                queries.workerActiveTasks(actor),
+                queries.workerTasks(actor));
     }
 
     @GetMapping("/admin/dashboard")
     @PreAuthorize("hasRole('ADMIN')")
     public AdminDashboard admin() {
-        long waiting = count("SELECT COUNT(*) FROM service_order WHERE status='WAITING_ASSIGNMENT'");
-        long confirmation = count("SELECT COUNT(*) FROM service_order WHERE status='WAITING_CONFIRMATION'");
-        long inService = count("SELECT COUNT(*) FROM service_order WHERE status='IN_SERVICE'");
-        long completed = count("SELECT COUNT(*) FROM service_order WHERE status='COMPLETED'");
-        long activeWorkers = count("SELECT COUNT(*) FROM account WHERE role='WORKER' AND status='ACTIVE'");
-        List<Map<String, Object>> recent = jdbc.queryForList("SELECT o.id,o.item_name_snapshot,o.start_at,o.status,o.payable_amount,e.full_name AS elder_name FROM service_order o JOIN elder_profile e ON e.id=o.elder_id ORDER BY o.id DESC LIMIT 8");
-        return new AdminDashboard(waiting, confirmation, inService, completed, activeWorkers, recent);
+        Map<String, Object> counts = queries.adminOrderCounts();
+        return new AdminDashboard(
+                number(counts.get("waiting")),
+                number(counts.get("confirming")),
+                number(counts.get("in_service")),
+                number(counts.get("completed")),
+                queries.activeWorkers(),
+                queries.adminRecentOrders());
     }
 
     @GetMapping("/admin/todos")
     @PreAuthorize("hasRole('ADMIN')")
-    public List<AdminTodo> todos(){
-        LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT DISTINCT o.id,o.item_name_snapshot,o.status,COALESCE(s.start_at,o.start_at) AS start_at,w.status AS worker_status,c.status AS creator_status,f.submitted_at FROM service_order o JOIN account c ON c.id=o.creator_id LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('PLANNED','ASSIGNED','IN_SERVICE','SUBMITTED') LEFT JOIN assignment a ON a.order_id=o.id AND a.status IN ('PENDING','ACCEPTED') LEFT JOIN account w ON w.id=a.worker_id LEFT JOIN fulfillment f ON f.order_id=o.id AND f.status='SUBMITTED' WHERE o.status='INTERRUPTED' OR (a.id IS NOT NULL AND w.status='DISABLED') OR (c.status='DISABLED' AND o.status IN ('WAITING_ASSIGNMENT','WAITING_ACCEPTANCE','WAITING_SERVICE','IN_SERVICE','WAITING_CONFIRMATION')) OR (o.status='WAITING_ASSIGNMENT' AND COALESCE(s.start_at,o.start_at)<?) OR (o.status='WAITING_ACCEPTANCE' AND COALESCE(s.start_at,o.start_at)<?) OR (o.status='WAITING_SERVICE' AND COALESCE(s.start_at,o.start_at)<?) OR (o.status='WAITING_CONFIRMATION' AND f.submitted_at<?) ORDER BY o.id DESC LIMIT 100",
-                now.plusHours(2),now.plusHours(1),now,now.minusHours(24));
-        return rows.stream().map(row->{
-            String status=(String)row.get("status");
-            String reason="INTERRUPTED".equals(status)?"服务中断，需核实费用与后续安排":"DISABLED".equals(row.get("worker_status"))?"服务人员已停用，需立即协调任务":"DISABLED".equals(row.get("creator_status"))?"订单创建人已停用，需协调有权人操作":"WAITING_CONFIRMATION".equals(status)?"用户长时间未确认，需人工协调":"预约阶段已临近或逾期，需人工处理";
-            return new AdminTodo(((Number)row.get("id")).longValue(),(String)row.get("item_name_snapshot"),reason,"HIGH");
-        }).toList();
+    public List<AdminTodo> todos() {
+        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        return queries.todos(now.plusHours(2), now.plusHours(1), now, now.minusHours(24)).stream()
+                .map(row -> new AdminTodo(row.id(), row.title(), reasonOf(row.priority()), "HIGH"))
+                .toList();
     }
 
     @GetMapping("/admin/orders")
     @PreAuthorize("hasRole('ADMIN')")
-    public List<Map<String, Object>> adminOrders(@RequestParam(defaultValue = "30") int size) {
-        if (size < 1 || size > 100) throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PAGE_SIZE", "每页数量须为 1–100");
-        return jdbc.queryForList("SELECT o.id,o.item_name_snapshot,COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.status,o.payable_amount,o.street_name_snapshot,e.full_name AS elder_name FROM service_order o JOIN elder_profile e ON e.id=o.elder_id LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('PLANNED','ASSIGNED','IN_SERVICE','SUBMITTED','CONFIRMED') ORDER BY o.id DESC LIMIT ?", size);
+    public PageResult<Map<String, Object>> adminOrders(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        PageQuery query = PageQuery.of(page, size);
+        return PageResult.of(queries.adminOrders(status, keyword, query), query, queries.adminOrderTotal(status, keyword));
     }
 
     @GetMapping("/admin/orders/{id}/candidates")
     @PreAuthorize("hasRole('ADMIN')")
     public List<Map<String, Object>> candidates(@PathVariable long id) {
-        List<Map<String, Object>> orders = jdbc.queryForList("SELECT o.item_id,o.street_id,COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.status FROM service_order o LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('PLANNED','ASSIGNED','IN_SERVICE','SUBMITTED') WHERE o.id=?", id);
-        if (orders.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在");
-        Map<String, Object> order = orders.getFirst();
-        if (!List.of("WAITING_ASSIGNMENT","WAITING_ACCEPTANCE","WAITING_SERVICE").contains(order.get("status"))) return List.of();
-        java.time.LocalDateTime start = cn.eldercare.common.SqlValues.localDateTime(order.get("start_at"));
-        java.time.LocalDateTime end = cn.eldercare.common.SqlValues.localDateTime(order.get("end_at"));
-        return jdbc.queryForList("SELECT DISTINCT a.id,a.display_name FROM account a JOIN worker_capability c ON c.worker_id=a.id JOIN worker_schedule s ON s.worker_id=a.id WHERE a.role='WORKER' AND a.status='ACTIVE' AND a.accepting=1 AND c.item_id=? AND c.street_id=? AND c.active=1 AND s.weekday=? AND s.start_time<=? AND s.end_time>=? AND NOT EXISTS(SELECT 1 FROM worker_leave l WHERE l.worker_id=a.id AND l.status IN ('PENDING','APPROVED') AND l.start_at<? AND l.end_at>?) AND NOT EXISTS(SELECT 1 FROM worker_occupancy o WHERE o.worker_id=a.id AND o.active=1 AND o.start_at<? AND o.end_at>?) ORDER BY a.id",
-                order.get("item_id"), order.get("street_id"), start.getDayOfWeek().getValue(),
-                java.sql.Time.valueOf(start.toLocalTime()), java.sql.Time.valueOf(end.toLocalTime()), end, start, end, start);
+        Map<String, Object> order = queries.orderWindow(id);
+        if (order == null) throw new ApiException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在");
+        if (!ASSIGNABLE_STATUSES.contains(order.get("status"))) return List.of();
+        LocalDateTime start = SqlValues.localDateTime(order.get("start_at"));
+        LocalDateTime end = SqlValues.localDateTime(order.get("end_at"));
+        return queries.candidates(((Number) order.get("item_id")).longValue(),
+                ((Number) order.get("street_id")).longValue(), start, end);
     }
 
     @GetMapping("/admin/orders/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public AdminOrderDetail adminOrder(@PathVariable long id) {
-        List<Map<String,Object>> orders=jdbc.queryForList("SELECT o.*,e.full_name AS elder_name,a.display_name AS creator_name FROM service_order o JOIN elder_profile e ON e.id=o.elder_id JOIN account a ON a.id=o.creator_id WHERE o.id=?",id);
-        if(orders.isEmpty())throw new ApiException(HttpStatus.NOT_FOUND,"ORDER_NOT_FOUND","订单不存在");
-        return new AdminOrderDetail(orders.getFirst(),
-                jdbc.queryForList("SELECT action,old_status,new_status,note,created_at,actor_id FROM order_event WHERE order_id=? ORDER BY id",id),
-                jdbc.queryForList("SELECT x.id,x.worker_id,a.display_name AS worker_name,x.status,x.assigned_at,x.responded_at,x.rejection_reason FROM assignment x JOIN account a ON a.id=x.worker_id WHERE x.order_id=? ORDER BY x.id",id),
-                jdbc.queryForList("SELECT id,assignment_id,status,started_at,submitted_at,confirmed_at FROM fulfillment WHERE order_id=? ORDER BY id",id),
-                jdbc.queryForList("SELECT id,reason,start_at,end_at,status,created_at FROM supplement_plan WHERE order_id=? ORDER BY id",id),
-                jdbc.queryForList("SELECT id,reason,status,reported_by,resolved_by,resolution,created_at,resolved_at FROM service_incident WHERE order_id=? ORDER BY id",id),
-                jdbc.queryForList("SELECT id,original_amount,proposed_amount,reason,status,proposed_by,decided_by,created_at,decided_at FROM fee_adjustment WHERE order_id=? ORDER BY id",id),
-                jdbc.queryForList("SELECT id,reason,status,opened_by,resolved_by,resolution,created_at,resolved_at FROM order_dispute WHERE order_id=? ORDER BY id",id));
+        Map<String, Object> order = queries.adminOrder(id);
+        if (order == null) throw new ApiException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在");
+        return new AdminOrderDetail(order,
+                queries.orderEvents(id),
+                queries.orderAssignments(id),
+                queries.orderFulfillments(id),
+                queries.orderSupplements(id),
+                queries.orderIncidents(id),
+                queries.orderFeeAdjustments(id),
+                queries.orderDisputes(id));
     }
 
-    private long count(String sql, Object... args) { Long value = jdbc.queryForObject(sql, Long.class, args); return value == null ? 0 : value; }
+    /** 待办原因按优先级判定：与 SQL 中 UNION ALL 支路的 priority 一一对应 */
+    private static String reasonOf(int priority) {
+        return switch (priority) {
+            case 1 -> "服务中断，需核实费用与后续安排";
+            case 2 -> "服务人员已停用，需立即协调任务";
+            case 3 -> "订单创建人已停用，需协调有权人操作";
+            case 7 -> "用户长时间未确认，需人工协调";
+            default -> "预约阶段已临近或逾期，需人工处理";
+        };
+    }
+
+    private static long number(Object value) {
+        return value == null ? 0 : ((Number) value).longValue();
+    }
 }

@@ -5,9 +5,9 @@ spring:
   application:
     name: eldercare-mock-payment
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/eldercare_payment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
-    password: ${DB_PASSWORD}
-app:
-  service-token: ${PAYMENT_SERVICE_TOKEN}
-  console-token: ${PAYMENT_CONSOLE_TOKEN}
+    url: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/eldercare_payment?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${PAYMENT_DB_USER}
+    password: ${PAYMENT_DB_PASSWORD}
+  web:
+    resources:
+      add-mappings: false

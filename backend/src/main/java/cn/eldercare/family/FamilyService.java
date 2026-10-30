@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import cn.eldercare.common.ApiException;
+import cn.eldercare.common.AuditService;
 import cn.eldercare.common.SqlValues;
 import cn.eldercare.identity.AuthService;
 import org.springframework.http.HttpStatus;
@@ -22,7 +23,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class FamilyService {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private final JdbcTemplate jdbc;
-    public FamilyService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final AuditService audit;
+    public FamilyService(JdbcTemplate jdbc, AuditService audit) { this.jdbc = jdbc; this.audit = audit; }
 
     public record ElderView(Long id, String fullName, LocalDate birthDate) { }
     public record Permissions(boolean canViewService, boolean canBook, boolean canManageReminder,
@@ -58,7 +60,7 @@ public class FamilyService {
     }
 
     public ElderView getElder(long actorId, long elderId) {
-        requirePermission(actorId, elderId, "can_view_service");
+        requirePermission(actorId, elderId, PermissionColumn.VIEW_SERVICE);
         List<ElderView> items = jdbc.query("SELECT id,full_name,birth_date FROM elder_profile WHERE id=? AND status='ACTIVE'",
                 (row, number) -> new ElderView(row.getLong("id"), row.getString("full_name"),
                         row.getDate("birth_date") == null ? null : row.getDate("birth_date").toLocalDate()), elderId);
@@ -67,8 +69,18 @@ public class FamilyService {
     }
 
     @Transactional
+    public ElderView updateElder(long actorId, long elderId, String name, LocalDate birthDate) {
+        requirePermission(actorId, elderId, PermissionColumn.MANAGE_FAMILY);
+        String fullName = name.trim();
+        jdbc.update("UPDATE elder_profile SET full_name=?,birth_date=? WHERE id=? AND status='ACTIVE'",
+                fullName, birthDate, elderId);
+        audit(actorId, "ELDER_UPDATE", "ELDER", elderId, "修改老人档案");
+        return new ElderView(elderId, fullName, birthDate);
+    }
+
+    @Transactional
     public long invite(long actorId, long elderId, String inputUsername, Permissions permissions) {
-        requirePermission(actorId, elderId, "can_manage_family");
+        requirePermission(actorId, elderId, PermissionColumn.MANAGE_FAMILY);
         String username = AuthService.normalizeUsername(inputUsername);
         if (username.isBlank()) throw new ApiException(HttpStatus.BAD_REQUEST, "INVITEE_REQUIRED", "请填写家属账号");
         List<Map<String, Object>> invitee = jdbc.queryForList("SELECT id,email FROM account WHERE username=?", username);
@@ -115,7 +127,7 @@ public class FamilyService {
         long elderId = ((Number) invitation.get("elder_id")).longValue();
         if (accept) {
             jdbc.queryForList("SELECT id FROM family_grant WHERE elder_id=? AND account_id=? FOR UPDATE",elderId,invitation.get("inviter_id"));
-            requirePermission(((Number)invitation.get("inviter_id")).longValue(),elderId,"can_manage_family");
+            requirePermission(((Number)invitation.get("inviter_id")).longValue(),elderId,PermissionColumn.MANAGE_FAMILY);
             jdbc.update("INSERT INTO family_grant(elder_id,account_id,can_view_service,can_book,can_manage_reminder,can_cancel,can_confirm,can_review,can_confirm_fee,can_manage_family,status,revoked_at) VALUES(?,?,?,?,?,?,?,?,?,?,'ACTIVE',NULL) ON DUPLICATE KEY UPDATE can_view_service=VALUES(can_view_service),can_book=VALUES(can_book),can_manage_reminder=VALUES(can_manage_reminder),can_cancel=VALUES(can_cancel),can_confirm=VALUES(can_confirm),can_review=VALUES(can_review),can_confirm_fee=VALUES(can_confirm_fee),can_manage_family=VALUES(can_manage_family),status='ACTIVE',revoked_at=NULL,granted_at=CURRENT_TIMESTAMP(3)",
                     elderId, actorId, invitation.get("can_view_service"), invitation.get("can_book"), invitation.get("can_manage_reminder"),
                     invitation.get("can_cancel"), invitation.get("can_confirm"), invitation.get("can_review"),
@@ -126,7 +138,7 @@ public class FamilyService {
     }
 
     public List<Map<String, Object>> grants(long actorId, long elderId) {
-        requirePermission(actorId, elderId, "can_manage_family");
+        requirePermission(actorId, elderId, PermissionColumn.MANAGE_FAMILY);
         return jdbc.queryForList("SELECT g.account_id,a.username,a.display_name,a.email,g.can_view_service,g.can_book,g.can_manage_reminder,g.can_cancel,g.can_confirm,g.can_review,g.can_confirm_fee,g.can_manage_family,g.status FROM family_grant g JOIN account a ON a.id=g.account_id WHERE g.elder_id=? ORDER BY g.id", elderId);
     }
 
@@ -143,7 +155,7 @@ public class FamilyService {
 
     @Transactional
     public void revoke(long actorId, long elderId, long targetId) {
-        requirePermission(actorId, elderId, "can_manage_family");
+        requirePermission(actorId, elderId, PermissionColumn.MANAGE_FAMILY);
         if (actorId == targetId) {
             Integer managers = jdbc.queryForObject("SELECT COUNT(*) FROM family_grant WHERE elder_id=? AND status='ACTIVE' AND can_manage_family=1", Integer.class, elderId);
             if (managers != null && managers <= 1) throw new ApiException(HttpStatus.CONFLICT, "LAST_MANAGER", "最后一名家庭管理者不能自行撤销授权");
@@ -153,12 +165,9 @@ public class FamilyService {
         audit(actorId, "FAMILY_REVOKE", "ELDER", elderId, "撤销家庭成员授权");
     }
 
-    public void requirePermission(long actorId, long elderId, String column) {
-        if (!List.of("can_view_service", "can_book", "can_manage_reminder", "can_cancel", "can_confirm", "can_review", "can_confirm_fee", "can_manage_family").contains(column)) {
-            throw new IllegalArgumentException("未知授权类型");
-        }
+    public void requirePermission(long actorId, long elderId, PermissionColumn permission) {
         String lock=TransactionSynchronizationManager.isActualTransactionActive()?" FOR UPDATE":"";
-        List<Long> grants=jdbc.query("SELECT g.id FROM family_grant g JOIN elder_profile e ON e.id=g.elder_id WHERE g.account_id=? AND g.elder_id=? AND g.status='ACTIVE' AND e.status='ACTIVE' AND g."+column+"=1"+lock,(row,n)->row.getLong(1),actorId,elderId);
+        List<Long> grants=jdbc.query("SELECT g.id FROM family_grant g JOIN elder_profile e ON e.id=g.elder_id WHERE g.account_id=? AND g.elder_id=? AND g.status='ACTIVE' AND e.status='ACTIVE' AND g."+permission.column()+"=1"+lock,(row,n)->row.getLong(1),actorId,elderId);
         if (grants.isEmpty()) throw new ApiException(HttpStatus.FORBIDDEN, "FAMILY_PERMISSION_REQUIRED", "当前没有此档案的有效授权");
     }
 
@@ -175,6 +184,6 @@ public class FamilyService {
 
     private LocalDateTime now() { return LocalDateTime.now(ZONE); }
     private void audit(long actorId, String action, String type, long id, String summary) {
-        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)", actorId, action, type, id, summary);
+        audit.record(actorId, action, type, id, summary);
     }
 }

@@ -60,7 +60,7 @@ public class AdminBootstrap implements ApplicationRunner, Ordered {
         } else if (reset) {
             jdbc.update("UPDATE account SET password_hash=?,status='ACTIVE',accepting=1,failed_logins=0,locked_until=NULL WHERE id=?",
                     encoder.encode(password), rows.getFirst().get("id"));
-            log.info("管理员密码已按配置重置 username={}", normalized);
+            log.warn("管理员密码已按临时配置重置 username={}", normalized);
         } else {
             log.info("管理员账号已存在，未重置密码 username={}", normalized);
         }

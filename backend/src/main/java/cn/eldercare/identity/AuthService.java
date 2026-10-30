@@ -8,7 +8,9 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 import cn.eldercare.common.ApiException;
+import cn.eldercare.common.AuditService;
 import cn.eldercare.common.SqlValues;
+import cn.eldercare.security.LoginThrottle;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -34,11 +36,16 @@ public class AuthService {
     private final AccountMapper accounts;
     private final JdbcTemplate jdbc;
     private final PasswordEncoder encoder;
+    private final LoginThrottle throttle;
+    private final AuditService audit;
 
-    public AuthService(AccountMapper accounts, JdbcTemplate jdbc, PasswordEncoder encoder) {
+    public AuthService(AccountMapper accounts, JdbcTemplate jdbc, PasswordEncoder encoder,
+                       LoginThrottle throttle, AuditService audit) {
         this.accounts = accounts;
         this.jdbc = jdbc;
         this.encoder = encoder;
+        this.throttle = throttle;
+        this.audit = audit;
     }
 
     public record SessionUser(Long id, String username, String name, String role) { }
@@ -60,26 +67,47 @@ public class AuthService {
         account.setRole("USER");
         account.setStatus("ACTIVE");
         accounts.insert(account);
-        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)",
-                account.getId(), "REGISTER", "ACCOUNT", account.getId(), "普通用户注册");
+        audit.record(account.getId(), "REGISTER", "ACCOUNT", account.getId(), "普通用户注册：" + account.getUsername());
     }
 
     public SessionUser login(String inputUsername, String password, HttpServletRequest request, HttpServletResponse response) {
-        if (password == null || password.isBlank()) throw badCredentials();
+        String ip = LoginThrottle.clientIp(request);
+        // 同来源失败过多时直接 429，避免用已知用户名反复尝试
+        try {
+            throttle.check(request);
+        } catch (ApiException rateLimited) {
+            audit.blocked(null, "LOGIN", "ACCOUNT", null, "来源登录尝试过于频繁，已被限流拦截", ip);
+            throw rateLimited;
+        }
+        if (password == null || password.isBlank()) {
+            throttle.recordFailure(request);
+            audit.failure(null, "LOGIN", "ACCOUNT", null, "登录口令为空", ip);
+            throw badCredentials();
+        }
         AccountEntity account = findByUsername(normalizeUsername(inputUsername));
-        if (account == null) throw badCredentials();
+        if (account == null) {
+            throttle.recordFailure(request);
+            audit.failure(null, "LOGIN", "ACCOUNT", null, "账号不存在：" + normalizeUsername(inputUsername), ip);
+            throw badCredentials();
+        }
         List<Map<String, Object>> info = jdbc.queryForList("SELECT failed_logins,locked_until FROM account WHERE id=?", account.getId());
         if (!info.isEmpty() && info.getFirst().get("locked_until") != null
                 && SqlValues.localDateTime(info.getFirst().get("locked_until")).isAfter(now())) {
+            audit.blocked(account.getId(), "LOGIN", "ACCOUNT", account.getId(), "账号处于锁定期，登录被拒绝", ip);
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "ACCOUNT_LOCKED", "登录尝试过多，请稍后再试");
         }
         if (!"ACTIVE".equals(account.getStatus()) || !encoder.matches(password, account.getPasswordHash())) {
             // MySQL 的 SET 自左向右求值：先判断是否达到阈值，再自增，避免用自增后的值比较导致提前锁定
             jdbc.update("UPDATE account SET locked_until=CASE WHEN failed_logins+1>=5 THEN ? ELSE locked_until END, failed_logins=failed_logins+1 WHERE id=?",
                     now().plusMinutes(15), account.getId());
+            throttle.recordFailure(request);
+            audit.failure(account.getId(), "LOGIN", "ACCOUNT", account.getId(),
+                    "ACTIVE".equals(account.getStatus()) ? "口令校验失败" : "账号状态为 " + account.getStatus(), ip);
             throw badCredentials();
         }
         jdbc.update("UPDATE account SET failed_logins=0,locked_until=NULL WHERE id=?", account.getId());
+        throttle.clear(request);
+        audit.success(account.getId(), "LOGIN", "ACCOUNT", account.getId(), "登录成功", ip);
         if (request.getSession(false) != null) request.changeSessionId();
         else request.getSession(true);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
@@ -106,8 +134,7 @@ public class AuthService {
         validatePassword(newPassword);
         jdbc.update("UPDATE account SET password_hash=?,failed_logins=0,locked_until=NULL WHERE id=?",
                 encoder.encode(newPassword), accountId);
-        jdbc.update("INSERT INTO audit_event(actor_id,action,target_type,target_id,summary) VALUES(?,?,?,?,?)",
-                accountId, "PASSWORD_CHANGE", "ACCOUNT", accountId, "账号自行修改密码");
+        audit.record(accountId, "PASSWORD_CHANGE", "ACCOUNT", accountId, "账号自行修改密码");
     }
 
     public static void validatePassword(String password) {

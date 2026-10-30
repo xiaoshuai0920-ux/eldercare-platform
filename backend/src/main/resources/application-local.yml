@@ -1,0 +1,7 @@
+app:
+  demo-data:
+    enabled: true
+  mock-payment:
+    enabled: true
+  payment-base-url: http://127.0.0.1:8081
+  payment-service-token: ${PAYMENT_SERVICE_TOKEN}

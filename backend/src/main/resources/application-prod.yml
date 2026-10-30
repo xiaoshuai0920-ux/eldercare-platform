@@ -1,0 +1,19 @@
+server:
+  # 生产部署按环境注入监听地址与端口；默认只监听本机，改为 0.0.0.0 才能对外提供服务
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: lax
+app:
+  bootstrap-admin-reset: false
+  demo-data:
+    enabled: false
+    reset-passwords: false
+  mock-payment:
+    enabled: false
+  payment-base-url: ''
+  payment-service-token: ''

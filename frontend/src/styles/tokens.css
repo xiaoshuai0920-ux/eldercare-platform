@@ -1,85 +1,172 @@
+/* ==========================================================================
+   居家养老智能生活服务平台 · 设计令牌（唯一真相源）
+   规则：本文件之外不允许出现十六进制色值与固定 px 字号。
+   用法：<link rel="stylesheet" href="../assets/app.css">（app.css 首行 import 本文件）
+   ========================================================================== */
+
 :root {
-  /* 主色与语义色 */
-  --color-primary: #0f7b5c;
-  --color-primary-hover: #0b6449;
-  --color-primary-soft: #e7f3ed;
-  --color-sidebar: #0e3b31;
-  --color-sidebar-active: #14795d;
-  --color-ink: #1b3129;
-  --color-ink-soft: #3e564c;
-  --color-muted: #6b7f76;
-  --color-line: #e4ece7;
-  --color-line-strong: #cbdad2;
-  --color-bg: #f4f7f5;
-  --color-surface: #ffffff;
-  --color-success: #2e7d5b;
-  --color-warning: #b26a1f;
-  --color-danger: #b4442f;
-  --color-info: #2f6f9f;
+  /* ---------- 色 · 已确认的服务蓝 ---------- */
+  --c-primary-50: #eaf3fc;
+  --c-primary-100: #d9eaf8;
+  --c-primary-500: #125fa8; /* 行动色：主按钮、当前分区 */
+  --c-primary-600: #104977; /* hover / 图标 */
+  --c-primary-700: #123e60; /* active / 深底文字 */
+  --c-sidebar: #123e60;
+  --c-sidebar-2: #103652;
+  --c-sidebar-active: #236091;
+  --c-sidebar-ink: #c6d9e8;
+  --c-sidebar-ink-soft: #a9c4d8;
 
-  /* 圆角 */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
-  --radius-pill: 999px;
+  /* ---------- 色 · 底色与面 ---------- */
+  --c-bg: #f5f8fb;
+  --c-surface: #ffffff;
+  --c-on-primary: #ffffff; /* 主色/深色底上的文字 */
+  --c-surface-sunken: #f2f7fc; /* 表头、代码块等内凹面 */
+  --c-surface-hover: #f6f9fc;
 
-  /* 间距 */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 32px;
-  --space-8: 40px;
+  /* ---------- 色 · 文字 ---------- */
+  --c-ink-strong: #123e60;
+  --c-ink: #19364d;
+  --c-ink-soft: #3c566a;
+  --c-ink-muted: #586c7c;
 
-  /* 字体 */
-  --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 24px;
-  --text-3xl: 32px;
-  --text-4xl: 40px;
-  --line-tight: 1.3;
-  --line-normal: 1.6;
+  /* ---------- 色 · 描边 ---------- */
+  --c-line-soft: #e9eff4;
+  --c-line: #dce5ec;
+  --c-line-strong: #c4d5e2;
 
-  /* 阴影与尺寸 */
-  --shadow-card: 0 1px 2px rgba(16, 48, 38, .04), 0 8px 24px rgba(16, 48, 38, .06);
-  --shadow-pop: 0 18px 60px rgba(37, 83, 61, .09);
+  /* ---------- 色 · 语义（每色三件套：色 / -soft 底 / -ink 文字） ---------- */
+  --c-success: #2e7d5b;
+  --c-success-soft: #e8f4ee;
+  --c-success-ink: #1f5f45;
+
+  --c-warm: #c2703a; /* 语义锁定「待你处理」 */
+  --c-warm-soft: #fdf1e3;
+  --c-warm-ink: #8f5210;
+
+  --c-danger: #b4442f;
+  --c-danger-soft: #fbeae6;
+  --c-danger-ink: #8f2f1f;
+
+  --c-info: #2f6f9f;
+  --c-info-soft: #e9f1f7;
+  --c-info-ink: #215a80;
+
+  --c-progress-soft: #e6f2f0;
+  --c-progress-ink: #1d5a52;
+  --c-neutral-soft: #f1f1ec;
+  --c-neutral-ink: #4c5a54;
+
+  --c-focus: #125fa8;
+  --c-focus-on-dark: #a8d7ff;
+
+  /* ---------- 字体 ---------- */
+  --font-sans:
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+  --font-num: 'SF Mono', 'Cascadia Mono', 'Consolas', var(--font-sans);
+
+  /* ---------- 字号九档 ---------- */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-30: 30px;
+  --fs-38: 38px;
+
+  /* ---------- 行高 ---------- */
+  --lh-tight: 1.35;
+  --lh-body: 1.65;
+  --lh-display: 1.5;
+
+  /* 两端基准字号：用户端更松，人员/管理端更紧 */
+  --fs-body: var(--fs-14);
+
+  /* ---------- 字重 ---------- */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semi: 600;
+  --fw-bold: 700;
+
+  /* ---------- 间距（4 基数） ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+
+  /* ---------- 圆角三级 ---------- */
+  --r-card: 14px;
+  --r-control: 10px;
+  --r-pill: 999px;
+
+  /* ---------- 触达与行高 ---------- */
+  --tap-min: 44px;
   --row-compact: 44px;
   --row-comfortable: 56px;
-  --page-max-staff: 1440px;
-  --page-max-user: 1200px;
+  --row-table: 48px;
 
-  /* Element Plus 主题映射 */
-  --el-color-primary: var(--color-primary);
-  --el-color-primary-light-3: #45a88d;
-  --el-color-primary-light-5: #80bea9;
-  --el-color-primary-light-7: #b4d9c9;
-  --el-color-primary-light-8: #cee6da;
-  --el-color-primary-light-9: var(--color-primary-soft);
-  --el-color-primary-dark-2: var(--color-primary-hover);
-  --el-border-radius-base: var(--radius-md);
-  --el-text-color-primary: var(--color-ink);
-  --el-text-color-regular: var(--color-ink-soft);
-  --el-border-color: var(--color-line);
-  --el-font-family: var(--font-sans);
+  /* ---------- 阴影（色相带绿） ---------- */
+  --shadow-sm: 0 1px 2px rgba(16, 48, 38, 0.04), 0 2px 8px rgba(16, 48, 38, 0.04);
+  --shadow-md: 0 2px 6px rgba(16, 48, 38, 0.05), 0 12px 28px rgba(16, 48, 38, 0.08);
+  --shadow-lg: 0 8px 20px rgba(16, 48, 38, 0.08), 0 32px 64px rgba(16, 48, 38, 0.12);
+
+  /* ---------- 版心 ---------- */
+  --w-user: 1200px;
+  --w-staff: 1440px;
+  --sidebar-w: 240px;
+
+  /* ---------- 动效 ---------- */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
 }
 
-/* 适老模式：只放大字号、行高与触达面积，不改变权限与信息结构 */
-html[data-senior="on"] {
-  --text-base: 18px;
-  --text-sm: 16px;
-  --text-lg: 20px;
-  --text-xl: 24px;
-  --text-2xl: 28px;
-  --text-3xl: 36px;
-  --row-compact: 56px;
+/* ==========================================================================
+   适老模式：字号整体 ×1.28、行高抬高、触达放大。不改变信息结构，只放大。
+   ========================================================================== */
+html[data-senior='on'] {
+  --fs-12: 15px;
+  --fs-13: 17px;
+  --fs-14: 18px;
+  --fs-16: 20px;
+  --fs-18: 23px;
+  --fs-20: 26px;
+  --fs-24: 31px;
+  --fs-30: 38px;
+  --fs-38: 49px;
+
+  --lh-tight: 1.45;
+  --lh-body: 1.7;
+  --lh-display: 1.6;
+
+  --tap-min: 48px;
+  --row-compact: 52px;
   --row-comfortable: 64px;
-  --color-muted: #50645b;
-  --color-line: #bfd2c5;
+  --row-table: 56px;
+
+  /* 次要文字加深，保证 ≥5:1 */
+  --c-ink-muted: #3c566a;
+  --c-line: #c4d5e2;
+
+  --sidebar-w: 248px;
+}
+
+/* 用户端密度：正文 16，标题更大，决策更少 */
+.density-user {
+  --fs-body: var(--fs-16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+  }
 }

@@ -9,10 +9,12 @@ import java.sql.Time;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import cn.eldercare.common.ApiException;
+import cn.eldercare.common.PageQuery;
 import cn.eldercare.common.SqlValues;
 import cn.eldercare.family.FamilyService;
 import cn.eldercare.family.OrderActionAccess;
@@ -22,6 +24,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import cn.eldercare.family.PermissionColumn;
 
 @Service
 public class OrderService {
@@ -32,11 +35,17 @@ public class OrderService {
     public OrderService(JdbcTemplate jdbc, FamilyService family, OrderActionAccess actionAccess) { this.jdbc = jdbc; this.family = family; this.actionAccess = actionAccess; }
 
     public record CreateOrder(long elderId, long itemId, long streetId, String address, LocalDateTime startAt, int durationMinutes) { }
-    public record Page<T>(List<T> items, int page, int size, long total) { }
+    public record OrderCounts(long total, long pending, long active, long upcoming, long done) { }
+    public record Page<T>(List<T> items, int page, int size, long total, OrderCounts counts) { }
+    private static final Map<String, List<String>> ORDER_GROUPS = Map.of(
+            "action", List.of("WAITING_CONFIRMATION"),
+            "active", List.of("IN_SERVICE"),
+            "upcoming", List.of("WAITING_ASSIGNMENT", "WAITING_ACCEPTANCE", "WAITING_SERVICE"),
+            "done", List.of("COMPLETED", "CANCELLED", "ABNORMAL_CLOSED", "INTERRUPTED"));
 
     @Transactional
     public long create(long actorId, CreateOrder request, String key) {
-        family.requirePermission(actorId, request.elderId(), "can_book");
+        family.requirePermission(actorId, request.elderId(), PermissionColumn.BOOK);
         String fingerprint = hash(request.toString());
         try {
             jdbc.update("INSERT INTO idempotency_record(actor_id,command_name,request_key,request_hash) VALUES(?,'ORDER_CREATE',?,?)", actorId, key, fingerprint);
@@ -85,16 +94,56 @@ public class OrderService {
         return orderId;
     }
 
-    public Page<Map<String, Object>> userOrders(long actorId, int page, int size) {
-        int offset = (page - 1) * size;
-        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM service_order o JOIN family_grant g ON g.elder_id=o.elder_id WHERE g.account_id=? AND g.status='ACTIVE' AND g.can_view_service=1", Long.class, actorId);
-        List<Map<String, Object>> rows = jdbc.queryForList("SELECT o.id,o.elder_id,o.item_name_snapshot,o.category_snapshot,COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.payable_amount,o.status FROM service_order o JOIN family_grant g ON g.elder_id=o.elder_id LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('PLANNED','ASSIGNED','IN_SERVICE','SUBMITTED','CONFIRMED') WHERE g.account_id=? AND g.status='ACTIVE' AND g.can_view_service=1 ORDER BY o.id DESC LIMIT ? OFFSET ?", actorId, size, offset);
-        return new Page<>(rows, page, size, total == null ? 0 : total);
+    public Page<Map<String, Object>> userOrders(long actorId, int page, int size, String group) {
+        PageQuery.of(page, size);
+        String selected = group == null || group.isBlank() ? "ALL" : group;
+        if (!"ALL".equals(selected) && !ORDER_GROUPS.containsKey(selected)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_GROUP", "订单分组无效");
+        }
+        String access = " FROM service_order o JOIN family_grant g ON g.elder_id=o.elder_id"
+                + " WHERE g.account_id=? AND g.status='ACTIVE' AND g.can_view_service=1";
+        List<Map<String, Object>> totals = jdbc.queryForList("SELECT o.status,COUNT(*) AS total" + access + " GROUP BY o.status", actorId);
+        long all = 0, pending = 0, active = 0, upcoming = 0, done = 0;
+        for (Map<String, Object> item : totals) {
+            String status = (String) item.get("status");
+            long count = ((Number) item.get("total")).longValue();
+            all += count;
+            if (ORDER_GROUPS.get("action").contains(status)) pending += count;
+            if (ORDER_GROUPS.get("active").contains(status)) active += count;
+            if (ORDER_GROUPS.get("upcoming").contains(status)) upcoming += count;
+            if (ORDER_GROUPS.get("done").contains(status)) done += count;
+        }
+        var counts = new OrderCounts(all, pending, active, upcoming, done);
+        long filteredTotal = switch (selected) {
+            case "action" -> pending;
+            case "active" -> active;
+            case "upcoming" -> upcoming;
+            case "done" -> done;
+            default -> all;
+        };
+        List<Object> args = new ArrayList<>();
+        args.add(actorId);
+        String filter = "";
+        if (!"ALL".equals(selected)) {
+            List<String> statuses = ORDER_GROUPS.get(selected);
+            filter = " AND o.status IN (" + String.join(",", java.util.Collections.nCopies(statuses.size(), "?")) + ")";
+            args.addAll(statuses);
+        }
+        args.add(size);
+        args.add((long) (page - 1) * size);
+        List<Map<String, Object>> rows = jdbc.queryForList("SELECT o.id,o.elder_id,o.item_name_snapshot,o.category_snapshot,"
+                + "COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.payable_amount,o.status"
+                + " FROM service_order o JOIN family_grant g ON g.elder_id=o.elder_id"
+                + " LEFT JOIN supplement_plan s ON s.id=(SELECT MAX(sp.id) FROM supplement_plan sp WHERE sp.order_id=o.id"
+                + " AND sp.status IN ('PLANNED','ASSIGNED','IN_SERVICE','SUBMITTED','CONFIRMED'))"
+                + " WHERE g.account_id=? AND g.status='ACTIVE' AND g.can_view_service=1" + filter
+                + " ORDER BY o.id DESC LIMIT ? OFFSET ?", args.toArray());
+        return new Page<>(rows, page, size, filteredTotal, counts);
     }
 
     public Map<String, Object> userOrder(long actorId, long orderId) {
         Map<String, Object> order = order(orderId, false);
-        family.requirePermission(actorId, ((Number) order.get("elder_id")).longValue(), "can_view_service");
+        family.requirePermission(actorId, ((Number) order.get("elder_id")).longValue(), PermissionColumn.VIEW_SERVICE);
         return order;
     }
 

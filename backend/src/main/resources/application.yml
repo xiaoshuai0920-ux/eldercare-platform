@@ -12,19 +12,20 @@ spring:
   application:
     name: eldercare-backend
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/eldercare?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
+    url: jdbc:mysql://127.0.0.1:${MYSQL_PORT:3306}/eldercare?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USER}
     password: ${DB_PASSWORD}
   jackson:
     time-zone: Asia/Shanghai
 app:
   timezone: Asia/Shanghai
   bootstrap-admin-username: admin
-  bootstrap-admin-password: ${BOOTSTRAP_ADMIN_PASSWORD}
-  bootstrap-admin-reset: true
+  bootstrap-admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+  bootstrap-admin-reset: ${BOOTSTRAP_ADMIN_RESET:false}
   demo-data:
-    enabled: true
+    enabled: false
     reset-passwords: false
     password: ${DEMO_ACCOUNT_PASSWORD:}
-  payment-base-url: http://127.0.0.1:8081
-  payment-service-token: ${PAYMENT_SERVICE_TOKEN}
+  mock-payment:
+    enabled: false
+  payment-base-url: ${PAYMENT_BASE_URL:}

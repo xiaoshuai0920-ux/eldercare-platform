@@ -1,0 +1,7 @@
+spring:
+  web:
+    resources:
+      add-mappings: true
+app:
+  service-token: ${PAYMENT_SERVICE_TOKEN}
+  console-token: ${PAYMENT_CONSOLE_TOKEN}

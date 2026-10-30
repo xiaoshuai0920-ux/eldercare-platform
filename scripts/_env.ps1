@@ -34,3 +34,23 @@ function Import-DotEnv {
     }
     return $settings
 }
+
+function Get-ConfiguredPort {
+    param(
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Settings,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Default
+    )
+    $port = if ($Settings.Contains($Name) -and ![string]::IsNullOrWhiteSpace($Settings[$Name])) {
+        $Settings[$Name]
+    } else { $Default }
+    if ($port -notmatch '^\d{1,5}$' -or [int]$port -lt 1 -or [int]$port -gt 65535) {
+        throw "$Name 必须是 1 到 65535 之间的端口号。"
+    }
+    return $port
+}
+
+function Get-MySqlPort {
+    param([Parameter(Mandatory = $true)][System.Collections.IDictionary]$Settings)
+    return Get-ConfiguredPort -Settings $Settings -Name 'MYSQL_PORT' -Default '3306'
+}
