@@ -4,6 +4,8 @@ import { ref } from 'vue'
 import AppPageHeader from '../../components/AppPageHeader.vue'
 import AppBottomNav from '../../components/AppBottomNav.vue'
 import { errorMessage, navigate, platformApi, requireRole, showFailure } from '../../api/platform.js'
+import { formatDateTime } from '../../utils/datetime.js'
+import { unread, refreshUnread } from '../../store/unread.js'
 
 const user = ref(null)
 const dashboard = ref(null)
@@ -33,7 +35,7 @@ async function logout() {
   catch (error) { showFailure(error) }
   finally { platformApi.resetSession(); navigate('/pages/login/index') }
 }
-onShow(load)
+onShow(() => { load(); refreshUnread() })
 </script>
 
 <template>
@@ -57,7 +59,7 @@ onShow(load)
         <view v-if="dashboard.recentOrders?.length" class="card-list">
           <view v-for="order in dashboard.recentOrders" :key="order.id" class="card">
             <view class="row"><text class="card-title">{{ order.item_name_snapshot }}</text><text class="status">{{ statusLabels[order.status] || order.status }}</text></view>
-            <text class="muted">{{ order.start_at }} · ¥{{ Number(order.payable_amount).toFixed(2) }}</text>
+            <text class="muted">{{ formatDateTime(order.start_at) }} · ¥{{ Number(order.payable_amount).toFixed(2) }}</text>
           </view>
         </view>
         <view v-else class="empty">还没有订单。预约服务后，订单会显示在这里。</view>
@@ -66,7 +68,7 @@ onShow(load)
           <button class="primary" @click="open('/pages/booking/index')">预约服务</button>
           <button class="secondary" @click="open('/pages/family/index')">家庭授权</button>
           <button class="secondary" @click="open('/pages/reminders/index')">生活提醒</button>
-          <button class="secondary" @click="open('/pages/messages/index')">消息通知</button>
+          <button class="secondary" @click="open('/pages/messages/index')">消息通知<text v-if="unread" class="cnt">{{ unread > 99 ? '99+' : unread }}</text></button>
         </view>
         <button class="logout" @click="logout">退出登录</button>
       </template>
@@ -99,4 +101,5 @@ button::after { border:0; }
 .primary { background:#125fa8; color:#fff; }
 .secondary { background:#eaf3fc; color:#104977; }
 .logout { margin:20px 0; padding:0 16px; background:transparent; color:#667b8c; }
+.cnt { margin-left:6px; padding:1px 7px; border-radius:9px; background:#c2402e; color:#fff; font-size:12px; }
 </style>

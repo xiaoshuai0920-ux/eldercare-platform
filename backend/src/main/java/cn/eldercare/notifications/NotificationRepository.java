@@ -67,4 +67,10 @@ public class NotificationRepository {
         jdbc.update("UPDATE notification SET read_at=COALESCE(read_at,CURRENT_TIMESTAMP(3)) WHERE id=? AND account_id=?",
                 id, accountId);
     }
+
+    public long unreadCount(long accountId, String visibility, String kindClause) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM notification n WHERE n.account_id=? AND n.read_at IS NULL AND "
+                + visibility + kindClause, Long.class, accountId);
+        return count == null ? 0 : count;
+    }
 }

@@ -184,8 +184,14 @@ public class WorkerAdminService {
     }
 
     public Map<String,Object> task(long workerId,long orderId) {
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT o.id AS order_id,o.item_name_snapshot,o.category_snapshot,o.rule_snapshot,o.duration_minutes,o.street_name_snapshot,o.address_snapshot,COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.status,a.status AS assignment_status,a.assigned_at,a.responded_at,e.full_name AS elder_name FROM assignment a JOIN service_order o ON o.id=a.order_id JOIN elder_profile e ON e.id=o.elder_id LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('ASSIGNED','IN_SERVICE','SUBMITTED') WHERE o.id=? AND a.worker_id=? AND a.status IN ('PENDING','ACCEPTED') AND o.status IN ('WAITING_ACCEPTANCE','WAITING_SERVICE','IN_SERVICE','WAITING_CONFIRMATION')",orderId,workerId);
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT o.id AS order_id,o.item_name_snapshot,o.category_snapshot,o.rule_snapshot,o.duration_minutes,o.street_name_snapshot,o.address_snapshot,o.contact_phone,COALESCE(s.start_at,o.start_at) AS start_at,COALESCE(s.end_at,o.end_at) AS end_at,o.status,a.status AS assignment_status,a.assigned_at,a.responded_at,e.full_name AS elder_name FROM assignment a JOIN service_order o ON o.id=a.order_id JOIN elder_profile e ON e.id=o.elder_id LEFT JOIN supplement_plan s ON s.order_id=o.id AND s.status IN ('ASSIGNED','IN_SERVICE','SUBMITTED') WHERE o.id=? AND a.worker_id=? AND a.status IN ('PENDING','ACCEPTED') AND o.status IN ('WAITING_ACCEPTANCE','WAITING_SERVICE','IN_SERVICE','WAITING_CONFIRMATION')",orderId,workerId);
         if(rows.isEmpty())throw new ApiException(HttpStatus.FORBIDDEN,"TASK_NOT_AVAILABLE","当前没有此任务的有效派单");
-        return rows.getFirst();
+        Map<String,Object> row=rows.getFirst();
+        // 接单前不暴露完整地址与联系电话：只有确认接单后（assignment 进入 ACCEPTED）才返回。
+        if(!"ACCEPTED".equals(row.get("assignment_status"))) {
+            row.put("address_snapshot", null);
+            row.put("contact_phone", null);
+        }
+        return row;
     }
 }

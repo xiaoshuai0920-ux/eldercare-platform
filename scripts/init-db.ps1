@@ -24,7 +24,8 @@ $mainMigrations = @(
     [PSCustomObject]@{ Name = 'V008__username_login.sql'; File = 'sql/main/V008__username_login.sql'; Table = 'account'; Column = 'username' },
     [PSCustomObject]@{ Name = 'V009__demo_seed.sql'; File = 'sql/main/V009__demo_seed.sql'; Table = 'demo_seed_record'; Column = '' },
     [PSCustomObject]@{ Name = 'V010__audit_context.sql'; File = 'sql/main/V010__audit_context.sql'; Table = 'audit_event'; Column = 'ip' },
-    [PSCustomObject]@{ Name = 'V011__order_status_index.sql'; File = 'sql/main/V011__order_status_index.sql'; Table = ''; Column = '' }
+    [PSCustomObject]@{ Name = 'V011__order_status_index.sql'; File = 'sql/main/V011__order_status_index.sql'; Table = ''; Column = '' },
+    [PSCustomObject]@{ Name = 'V012__order_contact_phone.sql'; File = 'sql/main/V012__order_contact_phone.sql'; Table = 'service_order'; Column = 'contact_phone' }
 )
 $paymentMigrations = @(
     [PSCustomObject]@{ Name = 'V000__migration.sql'; File = 'sql/payment/V000__migration.sql'; Table = ''; Column = '' },

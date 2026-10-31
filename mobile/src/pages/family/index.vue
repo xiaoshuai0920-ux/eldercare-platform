@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import AppPageHeader from '../../components/AppPageHeader.vue'
 import { errorMessage, platformApi, requireRole, showFailure } from '../../api/platform.js'
+import { formatDateTime } from '../../utils/datetime.js'
 
 const loading = ref(true)
 const failure = ref('')
@@ -88,7 +89,12 @@ function revoke(grant) {
     finally { busy.value = false }
   } })
 }
-async function changeElder(event) { selectedIndex.value = Number(event.detail.value); try { await loadGrants() } catch (error) { showFailure(error) } }
+async function changeElder(event) {
+  selectedIndex.value = Number(event.detail.value)
+  // 切换档案时收起编辑表单，否则会上一位老人的姓名写在当前档案的输入框里并被保存。
+  editingElder.value = false
+  try { await loadGrants() } catch (error) { showFailure(error) }
+}
 onShow(load)
 </script>
 
@@ -103,7 +109,7 @@ onShow(load)
           <view v-if="invitations.length" class="card invite-list">
             <text class="heading">待处理邀请</text>
             <view v-for="invitation in invitations" :key="invitation.id" class="grant-row">
-              <view><text class="strong">{{ invitation.elder_name }}</text><text class="muted">服务对象邀请 · {{ invitation.expires_at }}</text></view>
+              <view><text class="strong">{{ invitation.elder_name }}</text><text class="muted">服务对象邀请 · 有效至 {{ formatDateTime(invitation.expires_at) }}</text></view>
               <view class="row"><button class="primary small" :disabled="busy" @click="respond(invitation,true)">接受</button><button class="secondary small" :disabled="busy" @click="respond(invitation,false)">拒绝</button></view>
             </view>
           </view>
@@ -147,7 +153,7 @@ onShow(load)
 
 <style scoped>
 .page { min-height:100vh; background:#f5f8fb; color:#19364d; font-size:16px; line-height:1.5; }
-.scroll-area { height:calc(100vh - 60px); }
+.scroll-area { height:calc(100vh - 56px); }
 .content { display:flex; flex-direction:column; gap:12px; padding:14px 18px 30px; }
 .card { padding:17px; border-radius:13px; background:#fff; }
 .heading { display:block; margin-bottom:14px; font-size:19px; font-weight:700; }
@@ -163,7 +169,7 @@ onShow(load)
 .error { color:#a34135; }
 .empty { padding:12px; color:#687b89; background:#f5f8fb; border-radius:8px; }
 .subheading { display:block; margin:18px 0 6px; font-weight:700; }
-button { min-height:42px; padding:0 12px; border-radius:8px; font-size:14px; }
+button { width:auto; margin:0; min-height:42px; padding:0 12px; border-radius:8px; font-size:14px; }
 button::after { border:0; }
 .primary { background:#125fa8; color:#fff; }
 .secondary { background:#eaf3fc; color:#104977; }

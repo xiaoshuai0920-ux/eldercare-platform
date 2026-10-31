@@ -19,7 +19,8 @@ async function login() {
     password.value = ''
     if (user.role === 'ADMIN') {
       message.value = '管理员请使用 PC Web 工作台。'
-      await platformApi.logout()
+      // 退出失败不影响这条提示，避免把“管理员请用 PC”覆盖成一条退出错误。
+      try { await platformApi.logout() } catch { platformApi.resetSession() }
       return
     }
     message.value = `已登录：${user.name}`
@@ -40,6 +41,7 @@ async function login() {
     <view class="label">密码</view><input v-model="password" class="input" password placeholder="请输入密码" />
     <view v-if="message" class="message">{{ message }}</view>
     <button role="button" tabindex="0" class="submit" :disabled="busy" @click="login">{{ busy ? '正在登录' : '登录' }}</button>
+    <button class="back" @click="navigate('/pages/register/index')">没有账号？去注册</button>
   </view>
 </template>
 

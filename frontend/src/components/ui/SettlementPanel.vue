@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { onMounted, ref } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { userApi } from '@/api/endpoints'
   import type { SettlementView } from '@/api/types'
   import { money } from '@/utils/format'
@@ -9,6 +9,26 @@
   const data = ref<SettlementView | null>(null)
   const busy = ref(false)
   const error = ref('')
+  const hint = ref('')
+
+  /** 本机模拟支付控制台地址，可用 VITE_PAYMENT_CONSOLE_URL 覆盖 */
+  const CONSOLE_URL = import.meta.env.VITE_PAYMENT_CONSOLE_URL ?? 'http://127.0.0.1:8081/console.html'
+
+  /** 尝试标识等随链接预填，避免手抄长 UUID 抄错；令牌由控制台服务端注入，不经过 URL */
+  const consoleLink = computed(() => {
+    const attempt = data.value?.attempts[0]
+    if (!attempt) return CONSOLE_URL
+    const params = new URLSearchParams({
+      ref: attempt.attempt_ref,
+      order: String(props.orderId),
+      version: String(attempt.settlement_version),
+      amount: Number(attempt.amount).toFixed(2),
+    })
+    const url = new URL(CONSOLE_URL, window.location.origin)
+    // 带缓存隔离参数：控制台页面改版后，旧的启发式缓存仍可能命中，导致参数不预填
+    url.searchParams.set('v', attempt.attempt_ref.slice(0, 8))
+    return `${url.toString()}#${params.toString()}`
+  })
 
   async function load() {
     busy.value = true
@@ -23,12 +43,29 @@
     }
   }
 
+  /** 必须在点击的同步阶段占位开窗：等 await 之后再 open 会被浏览器当作弹窗拦截 */
+  function reserveConsoleWindow(): Window | null {
+    try {
+      return window.open('', '_blank')
+    } catch {
+      return null
+    }
+  }
+
   async function start() {
     busy.value = true
     error.value = ''
+    hint.value = ''
+    const reserved = reserveConsoleWindow()
     try {
       await userApi.createPaymentAttempt(props.orderId)
       data.value = await userApi.settlement(props.orderId)
+      if (reserved) {
+        reserved.location.href = consoleLink.value
+        hint.value = '已在新的标签页打开模拟支付控制台（尝试信息已预填）。'
+      } else {
+        hint.value = '浏览器拦截了新标签页，请点下方「模拟支付控制台」链接继续。'
+      }
     } catch {
       // 创建请求可能已提交；重新读取失败时禁止重复发起，直到状态可确认。
       try {
@@ -37,6 +74,7 @@
         data.value = null
       }
       error.value = '发起结果尚未确认，请先重新加载结算信息。'
+      if (reserved) reserved.close()
     } finally {
       busy.value = false
     }
@@ -62,6 +100,7 @@
     <h2 id="settlement-title">服务结算</h2>
     <p class="muted">模拟支付不涉及真实资金；线下结算由管理员登记。</p>
     <p v-if="error" class="settlement-error" role="alert">{{ error }}</p>
+    <p v-if="hint" class="settlement-hint" role="status">{{ hint }}</p>
     <template v-if="data">
       <p>
         结算金额：<strong>{{ money(Number(data.settlement.amount)) }}</strong>
@@ -78,9 +117,9 @@
       </p>
       <template v-if="data.settlement.status === 'PROCESSING' && data.attempts[0]">
         <p class="muted">
-          请在<a href="http://127.0.0.1:8081/console.html" target="_blank" rel="noopener noreferrer"
-            >本机模拟支付控制台</a
-          >登记交易并设置结果，再返回刷新。
+          在
+          <a :href="consoleLink" target="_blank" rel="noopener noreferrer">模拟支付控制台</a>
+          登记交易并设置结果（尝试信息已随链接预填），再返回刷新。
         </p>
         <dl class="settlement-reference">
           <div>
@@ -138,6 +177,10 @@
   }
   .settlement-error {
     color: var(--c-danger-ink);
+  }
+  .settlement-hint {
+    color: var(--c-ink-muted);
+    font-size: var(--fs-13);
   }
   .settlement-reference {
     margin: 0;

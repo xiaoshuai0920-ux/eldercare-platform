@@ -39,6 +39,8 @@ export const useFamilyStore = defineStore('family', () => {
   const invitationsError = ref('')
   const selectedId = ref<number | null>(null)
   const permissions = ref<Permissions | null>(null)
+  /** 按档案缓存的权限，供订单等页面判断按钮可用性，避免重复请求 */
+  const permissionsByElder = ref<Record<number, Permissions>>({})
   const claims = ref<IdentityClaimRow[]>([])
   const disputes = ref<FamilyDisputeRow[]>([])
   const grants = ref<GrantRow[]>([])
@@ -109,6 +111,7 @@ export const useFamilyStore = defineStore('family', () => {
       grantsError.value = grantFailure
       preferencesError.value = preferenceFailure
       permissions.value = perm
+      permissionsByElder.value[elderId] = perm
       claims.value = claimList
       disputes.value = disputeList
       grants.value = grantList as unknown as GrantRow[]
@@ -124,6 +127,23 @@ export const useFamilyStore = defineStore('family', () => {
   async function select(elderId: number) {
     selectedId.value = elderId
     await loadDetail(elderId)
+  }
+
+  /** 权限查询失败（例如无查看权）不抛错，返回 null 由调用方按「未知」处理 */
+  async function ensurePermissions(elderId: number): Promise<Permissions | null> {
+    const cached = permissionsByElder.value[elderId]
+    if (cached) return cached
+    try {
+      const perm = await userApi.permissions(elderId)
+      permissionsByElder.value[elderId] = perm
+      return perm
+    } catch {
+      return null
+    }
+  }
+
+  function permsOf(elderId: number): Permissions | null {
+    return permissionsByElder.value[elderId] ?? null
   }
 
   async function loadInvitations() {
@@ -256,6 +276,9 @@ export const useFamilyStore = defineStore('family', () => {
     selected,
     selectedAge,
     permissions,
+    permissionsByElder,
+    ensurePermissions,
+    permsOf,
     claims,
     disputes,
     grants,

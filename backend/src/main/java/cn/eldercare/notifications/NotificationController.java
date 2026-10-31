@@ -1,10 +1,10 @@
 package cn.eldercare.notifications;
 
+import java.util.List;
 import java.util.Map;
 
 import cn.eldercare.common.ApiException;
 import cn.eldercare.common.PageQuery;
-import cn.eldercare.common.PageResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,16 +21,21 @@ public class NotificationController {
 
     public NotificationController(NotificationRepository notifications) { this.notifications = notifications; }
 
+    /** 消息列表响应：在原有分页结构上附带未读数，供入口角标使用 */
+    public record ListResponse(List<Map<String, Object>> items, int page, int size, long total, long unread) { }
+
     @GetMapping
-    public PageResult<Map<String, Object>> list(Authentication auth, @RequestParam(defaultValue = "1") int page,
-                                                @RequestParam(defaultValue = "20") int size,
-                                                @RequestParam(required = false) String kind) {
+    public ListResponse list(Authentication auth, @RequestParam(defaultValue = "1") int page,
+                             @RequestParam(defaultValue = "20") int size,
+                             @RequestParam(required = false) String kind) {
         PageQuery query = PageQuery.of(page, size);
         long accountId = Long.parseLong(auth.getName());
         String visibility = visibilityOf(auth);
         String kindClause = notifications.kindClause(kind);
-        return PageResult.of(notifications.page(accountId, visibility, kindClause, query.size(), query.offset()),
-                query, notifications.count(accountId, visibility, kindClause));
+        List<Map<String, Object>> items = notifications.page(accountId, visibility, kindClause, query.size(), query.offset());
+        return new ListResponse(items, query.page(), query.size(),
+                notifications.count(accountId, visibility, kindClause),
+                notifications.unreadCount(accountId, visibility, kindClause));
     }
 
     @PostMapping("/{id}/read")

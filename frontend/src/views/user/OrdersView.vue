@@ -85,6 +85,34 @@
     }
   }
 
+  /** 按档案补齐权限：订单卡片上的确认/取消/评价按钮必须与后端授权一致，避免点了才报 403 */
+  async function refreshPermissions() {
+    const ids = Array.from(new Set(orders.list.map((row) => row.elder_id)))
+    await Promise.all(ids.map((id) => family.ensurePermissions(id)))
+  }
+
+  watch(() => orders.list, refreshPermissions, { immediate: true })
+
+  function permsOf(elderId: number) {
+    return family.permsOf(elderId)
+  }
+
+  /** 权限未知（未加载/加载失败）时返回 false，按钮先不出现，避免误导 */
+  function allowed(elderId: number, key: 'canConfirm' | 'canCancel' | 'canReview'): boolean {
+    return Boolean(permsOf(elderId)?.[key])
+  }
+
+  /** 403 权限类错误给出可执行的说明，而不是「请稍后重试」 */
+  function actionMessage(fallback: string): string {
+    const denied =
+      orders.actionErrorCode === 'FAMILY_PERMISSION_REQUIRED' ||
+      orders.actionErrorCode === 'ORDER_ACTION_FORBIDDEN'
+    if (denied) {
+      return '当前账号在该服务对象档案上没有此操作的授权。请让档案管理者在「家庭管理」中授予对应权限后再试。'
+    }
+    return orders.actionError || fallback
+  }
+
   async function startOrderDispute(id: number) {
     const reason = window.prompt('请简要说明对本次服务的异议')?.trim()
     if (!reason) return
@@ -131,8 +159,12 @@
     busy.value = true
     const ok = await orders.confirm(targetId.value)
     busy.value = false
-    confirmOpen.value = false
-    ui.notify(ok ? '已确认完成' : orders.error, ok ? 'success' : 'danger')
+    if (ok) {
+      confirmOpen.value = false
+      ui.notify('已确认完成', 'success')
+      return
+    }
+    ui.notify(actionMessage('确认失败，请稍后重试'), 'danger')
   }
 
   function askCancel(id: number) {
@@ -145,8 +177,12 @@
     busy.value = true
     const ok = await orders.cancel(targetId.value)
     busy.value = false
-    cancelOpen.value = false
-    ui.notify(ok ? '订单已取消' : orders.error, ok ? 'default' : 'danger')
+    if (ok) {
+      cancelOpen.value = false
+      ui.notify('订单已取消')
+      return
+    }
+    ui.notify(actionMessage('取消失败，请稍后重试'), 'danger')
   }
 
   // ---- 评价 ----
@@ -195,7 +231,7 @@
     }
   }
 
-  function canCancel(status: string): boolean {
+  function statusAllowsCancel(status: string): boolean {
     return ['WAITING_ASSIGNMENT', 'WAITING_ACCEPTANCE', 'WAITING_SERVICE'].includes(status)
   }
 
@@ -274,15 +310,31 @@
 
           <div class="order-card__foot">
             <span class="order-card__amount num">{{ money(order.payable_amount) }}</span>
-            <AppButton v-if="canCancel(order.status)" variant="ghost" compact @click="askCancel(order.id)"
+            <span
+              v-if="
+                order.status === 'WAITING_CONFIRMATION' &&
+                permsOf(order.elder_id) &&
+                !allowed(order.elder_id, 'canConfirm')
+              "
+              class="chip"
+              title="该档案未授予当前账号「确认完成」权限"
+              >无确认权限</span
+            >
+            <AppButton
+              v-if="statusAllowsCancel(order.status) && allowed(order.elder_id, 'canCancel')"
+              variant="ghost"
+              compact
+              @click="askCancel(order.id)"
               >取消订单</AppButton
             >
             <AppButton variant="secondary" @click="openDetail(order.id)">查看详情</AppButton>
-            <AppButton v-if="order.status === 'WAITING_CONFIRMATION'" @click="askConfirm(order.id)"
+            <AppButton
+              v-if="order.status === 'WAITING_CONFIRMATION' && allowed(order.elder_id, 'canConfirm')"
+              @click="askConfirm(order.id)"
               >确认完成</AppButton
             >
             <AppButton
-              v-if="order.status === 'COMPLETED'"
+              v-if="order.status === 'COMPLETED' && allowed(order.elder_id, 'canReview')"
               variant="ghost"
               compact
               @click="openReview(order.id)"
@@ -317,6 +369,7 @@
     >
 
     <div v-if="orders.detailLoading"><SkeletonBlock :rows="4" /></div>
+    <p v-else-if="!orders.detail" class="muted">{{ orders.actionError || '订单详情加载失败，请稍后重试' }}</p>
     <template v-else-if="orders.detail">
       <div class="row" style="justify-content: space-between">
         <StatusTag :value="orders.detail.status" />
@@ -398,7 +451,11 @@
     <template #footer>
       <AppButton variant="secondary" @click="orders.closeDetail">关闭</AppButton>
       <AppButton
-        v-if="orders.detail && orders.detail.status === 'WAITING_CONFIRMATION'"
+        v-if="
+          orders.detail &&
+          orders.detail.status === 'WAITING_CONFIRMATION' &&
+          allowed(orders.detail.elder_id, 'canConfirm')
+        "
         @click="askConfirm(orders.detail.id)"
         >确认完成</AppButton
       >

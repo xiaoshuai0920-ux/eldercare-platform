@@ -15,6 +15,9 @@ export const useOrderStore = defineStore('orders', () => {
   const list = ref<UserOrderRow[]>([])
   const loading = ref(false)
   const error = ref('')
+  /** 单次操作（确认/取消/详情）失败信息，与列表加载失败分开，避免误报「订单数据加载失败」 */
+  const actionError = ref('')
+  const actionErrorCode = ref('')
   const detail = ref<UserOrderDetail | null>(null)
   const detailLoading = ref(false)
   const page = ref(1)
@@ -63,10 +66,12 @@ export const useOrderStore = defineStore('orders', () => {
 
   async function openDetail(id: number) {
     detailLoading.value = true
+    actionError.value = ''
+    actionErrorCode.value = ''
     try {
       detail.value = await userApi.order(id)
     } catch (reason) {
-      error.value = reason instanceof ApiError ? reason.message : '订单详情加载失败'
+      recordFailure(reason, '订单详情加载失败')
     } finally {
       detailLoading.value = false
     }
@@ -76,26 +81,38 @@ export const useOrderStore = defineStore('orders', () => {
     detail.value = null
   }
 
+  function recordFailure(reason: unknown, fallback: string) {
+    actionError.value = reason instanceof ApiError ? reason.message : fallback
+    actionErrorCode.value = reason instanceof ApiError ? reason.code : ''
+  }
+
+  function clearActionError() {
+    actionError.value = ''
+    actionErrorCode.value = ''
+  }
+
   async function confirm(id: number): Promise<boolean> {
+    clearActionError()
     try {
       await userApi.confirm(id)
       await load()
       if (detail.value?.id === id) await openDetail(id)
       return true
     } catch (reason) {
-      error.value = reason instanceof ApiError ? reason.message : '确认失败'
+      recordFailure(reason, '确认失败')
       return false
     }
   }
 
   async function cancel(id: number): Promise<boolean> {
+    clearActionError()
     try {
       await userApi.cancel(id)
       await load()
       if (detail.value?.id === id) closeDetail()
       return true
     } catch (reason) {
-      error.value = reason instanceof ApiError ? reason.message : '取消失败'
+      recordFailure(reason, '取消失败')
       return false
     }
   }
@@ -104,6 +121,8 @@ export const useOrderStore = defineStore('orders', () => {
     list,
     loading,
     error,
+    actionError,
+    actionErrorCode,
     detail,
     detailLoading,
     counts,
@@ -114,6 +133,7 @@ export const useOrderStore = defineStore('orders', () => {
     load,
     openDetail,
     closeDetail,
+    clearActionError,
     confirm,
     cancel,
   }

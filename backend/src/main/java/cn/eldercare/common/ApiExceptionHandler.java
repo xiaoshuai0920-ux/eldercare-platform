@@ -10,6 +10,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -31,6 +32,14 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> api(ApiException exception) {
         return ResponseEntity.status(exception.status())
                 .body(new ApiError(exception.code(), exception.getMessage()));
+    }
+
+    /** 方法级 @PreAuthorize 拒绝：必须返回 403，不能被兜底成 500 */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiError> accessDenied(AccessDeniedException exception) {
+        log.warn("权限不足: {}", exception.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiError("FORBIDDEN", "无权执行此操作"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

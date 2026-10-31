@@ -42,6 +42,7 @@ public class ReminderController {
                          @NotBlank String recurrence, @NotNull LocalDateTime firstAt) { }
     public record Update(@NotBlank @Size(max = 100) String title,
                          @NotBlank String recurrence, @NotNull LocalDateTime nextFireAt) { }
+    public record Resume(@NotNull LocalDateTime nextFireAt) { }
 
     @GetMapping
     public List<Map<String, Object>> list(Authentication auth) {
@@ -89,5 +90,22 @@ public class ReminderController {
             throw new ApiException(HttpStatus.CONFLICT, "REMINDER_STATE_CONFLICT", "提醒已停止或结束");
         }
         reminders.stop(id);
+    }
+
+    /** 重新开启：只有被停止的提醒可以恢复，必须给出新的投递时间；已结束（一次性已投递）不可恢复。 */
+    @PostMapping("/{id}/resume")
+    @Transactional
+    public void resume(@PathVariable long id, @Valid @RequestBody Resume input, Authentication auth) {
+        Map<String, Object> reminder = reminders.forUpdate(id);
+        if (reminder == null) throw new ApiException(HttpStatus.NOT_FOUND, "REMINDER_NOT_FOUND", "提醒不存在");
+        long elderId = ((Number) reminder.get("elder_id")).longValue();
+        family.requirePermission(Long.parseLong(auth.getName()), elderId, PermissionColumn.MANAGE_REMINDER);
+        if (!"STOPPED".equals(reminder.get("status"))) {
+            throw new ApiException(HttpStatus.CONFLICT, "REMINDER_STATE_CONFLICT", "只有已停止的提醒可以重新开启");
+        }
+        if (!input.nextFireAt().isAfter(LocalDateTime.now(BUSINESS_ZONE))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "REMINDER_RULE_INVALID", "重新开启的时间必须晚于当前时间");
+        }
+        reminders.resume(id, input.nextFireAt());
     }
 }

@@ -36,6 +36,11 @@ public class ReminderRepository {
         jdbc.update("UPDATE life_reminder SET status='STOPPED',next_fire_at=NULL WHERE id=?", id);
     }
 
+    /** 停止的提醒回到进行中，必须同时给出新的投递时间，避免恢复出永不到期的记录 */
+    public void resume(long id, LocalDateTime nextFireAt) {
+        jdbc.update("UPDATE life_reminder SET status='ACTIVE',next_fire_at=? WHERE id=?", nextFireAt, id);
+    }
+
     public void update(long id, String title, String recurrence, LocalDateTime nextFireAt) {
         jdbc.update("UPDATE life_reminder SET title=?,recurrence=?,next_fire_at=? WHERE id=?",
                 title.trim(), recurrence, nextFireAt, id);

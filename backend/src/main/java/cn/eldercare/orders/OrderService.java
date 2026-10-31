@@ -34,7 +34,7 @@ public class OrderService {
     private final OrderActionAccess actionAccess;
     public OrderService(JdbcTemplate jdbc, FamilyService family, OrderActionAccess actionAccess) { this.jdbc = jdbc; this.family = family; this.actionAccess = actionAccess; }
 
-    public record CreateOrder(long elderId, long itemId, long streetId, String address, LocalDateTime startAt, int durationMinutes) { }
+    public record CreateOrder(long elderId, long itemId, long streetId, String address, String contactPhone, LocalDateTime startAt, int durationMinutes) { }
     public record OrderCounts(long total, long pending, long active, long upcoming, long done) { }
     public record Page<T>(List<T> items, int page, int size, long total, OrderCounts counts) { }
     private static final Map<String, List<String>> ORDER_GROUPS = Map.of(
@@ -68,7 +68,7 @@ public class OrderService {
         GeneratedKeyHolder generated = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO service_order(creator_id,elder_id,item_id,item_name_snapshot,category_snapshot,rule_snapshot,pricing_model_snapshot,unit_price_snapshot,duration_minutes,original_amount,payable_amount,street_id,street_name_snapshot,address_snapshot,start_at,end_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_ASSIGNMENT')",
+                    "INSERT INTO service_order(creator_id,elder_id,item_id,item_name_snapshot,category_snapshot,rule_snapshot,pricing_model_snapshot,unit_price_snapshot,duration_minutes,original_amount,payable_amount,street_id,street_name_snapshot,address_snapshot,contact_phone,start_at,end_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'WAITING_ASSIGNMENT')",
                     Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, actorId);
             statement.setLong(2, request.elderId());
@@ -84,8 +84,9 @@ public class OrderService {
             statement.setLong(12, request.streetId());
             statement.setString(13, streetName);
             statement.setString(14, request.address().trim());
-            statement.setObject(15, request.startAt());
-            statement.setObject(16, request.startAt().plusMinutes(request.durationMinutes()));
+            statement.setString(15, request.contactPhone() == null ? null : request.contactPhone().trim());
+            statement.setObject(16, request.startAt());
+            statement.setObject(17, request.startAt().plusMinutes(request.durationMinutes()));
             return statement;
         }, generated);
         long orderId = generated.getKey().longValue();

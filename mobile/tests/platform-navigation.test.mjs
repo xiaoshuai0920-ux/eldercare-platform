@@ -67,3 +67,24 @@ test('an allowed role returns the account without touching the router', async ()
   assert.equal(user.name, '林阿姨女儿')
   assert.equal(calls.some((call) => call.reLaunch), false)
 })
+
+test('a session expiry during navigation eventually opens login', async () => {
+  resetSession()
+  const calls = []
+  let finishFirst
+  globalThis.uni = {
+    request(options) { options.success({ statusCode: 401, data: { message: '会话已过期' }, cookies: [] }) },
+    reLaunch(options) {
+      calls.push(options.url)
+      if (!finishFirst) finishFirst = options.complete
+      else options.complete?.()
+    },
+  }
+  const { navigate } = await import('../src/api/platform.js')
+  navigate('/pages/dashboard/index')
+  await requireRole(['USER'])
+  finishFirst()
+  await settled()
+  assert.deepEqual(calls, ['/pages/dashboard/index', '/pages/login/index'])
+  await settled()
+})

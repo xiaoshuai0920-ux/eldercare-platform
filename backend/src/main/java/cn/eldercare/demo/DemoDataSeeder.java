@@ -86,7 +86,7 @@ public class DemoDataSeeder implements ApplicationRunner, Ordered {
     private Accounts seedAccounts() {
         long admin = ensureAccount("admin", "系统管理员", "ADMIN", "ACTIVE", true);
         long family01 = ensureAccount("family01", "陈晓梅", "USER", "ACTIVE", true);
-        long family02 = ensureAccount("family02", "林建国", "USER", "ACTIVE", true);
+        long family02 = ensureAccount("family02", "陈建国", "USER", "ACTIVE", true);
         long worker01 = ensureAccount("worker01", "王秀兰", "WORKER", "ACTIVE", true);
         long worker02 = ensureAccount("worker02", "李国强", "WORKER", "ACTIVE", true);
         long worker03 = ensureAccount("worker03", "赵春燕", "WORKER", "DISABLED", false);
@@ -204,15 +204,21 @@ public class DemoDataSeeder implements ApplicationRunner, Ordered {
     // ------------------------------------------------------------------ 档案与家庭
 
     private Elders seedFamily(Accounts accounts, Catalog catalog, LocalDateTime now) {
-        long zhang = ensureElder("elder:zhang", "张桂芳", "1943-05-12", accounts.family01());
-        long liu = ensureElder("elder:liu", "刘志远", "1948-11-03", accounts.family02());
-        long wang = ensureElder("elder:wang", "王淑珍", "1939-02-27", accounts.family01());
+        // 陈家：三位老人是亲兄妹（德字辈）。长姐陈德珍招赘，女儿陈晓梅随母姓；三弟陈德远的儿子是陈建国。
+        // 陈晓梅与陈建国为表兄妹，二姑陈德芳无子女，由两家共同照护。
+        long zhang = ensureElder("elder:zhang", "陈德芳", "1943-05-12", accounts.family01());
+        long liu = ensureElder("elder:liu", "陈德远", "1948-11-03", accounts.family02());
+        long wang = ensureElder("elder:wang", "陈德珍", "1939-02-27", accounts.family01());
 
         grant(zhang, accounts.family01(), true, true, true, true, true, true, true, true);
         grant(zhang, accounts.family02(), true, true, true, false, true, true, false, false);
         grant(liu, accounts.family02(), true, true, true, true, true, true, true, true);
+        // 外甥女对舅舅只授查看权，用于演示“授权范围不同”
         grant(liu, accounts.family01(), true, false, false, false, false, false, false, false);
-        grant(wang, accounts.family01(), true, true, false, false, false, false, false, false);
+        // 侄子对姑母同样只授查看权，与“外甥女看舅舅”对称
+        grant(wang, accounts.family02(), true, false, false, false, false, false, false, false);
+        // 陈德珍由女儿陈晓梅建档并下单，必须同时具备确认/取消/评价权限，否则「本人下的单自己无法确认」会卡住流程
+        grant(wang, accounts.family01(), true, true, true, true, true, true, true, true);
 
         for (String tag : new String[]{"清淡饮食", "软食"}) {
             jdbc.update("INSERT IGNORE INTO elder_preference_tag(elder_id,tag) VALUES(?,?)", zhang, tag);
@@ -596,7 +602,7 @@ public class DemoDataSeeder implements ApplicationRunner, Ordered {
         Long disputeId = registry.recall("family-dispute:zhang");
         if (disputeId != null) {
             notifyOnce("notify:admin-family", accounts.admin(), null, null, "家庭关联争议待协调",
-                    "张桂芳档案出现家庭关联争议，请核实双方授权依据。", "/admin/operations", "ACTION", now.minusDays(2));
+                    "陈德芳档案出现家庭关联争议，请核实双方授权依据。", "/admin/operations", "ACTION", now.minusDays(2));
         }
     }
 

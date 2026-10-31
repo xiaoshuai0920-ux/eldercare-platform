@@ -51,11 +51,11 @@ export const useCatalogStore = defineStore('catalog', () => {
     })
   }
 
-  /** 单个项目的可服务街道，按项目缓存 */
+  /** 单个项目的可服务街道（用户端，公开路由），按项目缓存 */
   async function itemAreas(itemId: number): Promise<{ id: number; full_name: string }[]> {
     const cached = areaCache.get(itemId)
     if (cached) return cached
-    const list = await catalogApi.itemAreas(itemId)
+    const list = await catalogApi.publicItemAreas(itemId)
     areaCache.set(itemId, list)
     return list
   }

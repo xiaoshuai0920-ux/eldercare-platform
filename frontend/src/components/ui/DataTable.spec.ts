@@ -9,7 +9,7 @@ const columns = [
 ]
 
 const rows = [
-  { id: 61, elder_name: '张桂芳', amount: 45 },
+  { id: 61, elder_name: '陈德芳', amount: 45 },
   { id: 60, elder_name: '陈志强', amount: 180 },
 ]
 
@@ -19,7 +19,7 @@ describe('DataTable', () => {
     const headers = wrapper.findAll('th').map((item) => item.text())
     expect(headers).toEqual(['订单号', '老人', '金额'])
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)
-    expect(wrapper.text()).toContain('张桂芳')
+    expect(wrapper.text()).toContain('陈德芳')
   })
 
   it('每个单元格带 data-label，便于窄屏降级为卡片', () => {

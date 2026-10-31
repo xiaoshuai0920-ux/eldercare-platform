@@ -2,7 +2,9 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import AppPageHeader from '../../components/AppPageHeader.vue'
-import { errorMessage, platformApi, requireRole, showFailure } from '../../api/platform.js'
+import { errorMessage, notificationTarget, platformApi, requireRole, showFailure } from '../../api/platform.js'
+import { formatDateTime } from '../../utils/datetime.js'
+import { unread } from '../../store/unread.js'
 
 const loading=ref(true)
 const failure=ref('')
@@ -15,19 +17,37 @@ async function load() {
     if (!await requireRole(['USER','WORKER'])) { loading.value=false; return }
     const page=await platformApi.notifications()
     items.value=page.items || []
+    unread.value=Number(page.unread) || 0
   }
   catch(error) { failure.value=errorMessage(error,'消息加载失败') }
   finally { loading.value=false }
 }
-async function read(item) {
-  if (item.read_at) return
-  busy.value=true
-  try { await platformApi.readNotification(item.id); item.read_at=new Date().toISOString() }
-  catch(error) { showFailure(error) }
-  finally { busy.value=false }
+// 点击消息：标记已读 + 跳转到对应业务页。
+// 原来的实现只标记已读，已读消息还会在入口直接 return，所以点击后毫无反应。
+async function open(item) {
+  const target = notificationTarget(item)
+  if (!target) return showFailure(new Error('这条通知没有可打开的内容'))
+  if (!item.read_at) {
+    busy.value = true
+    try { await platformApi.readNotification(item.id); item.read_at = new Date().toISOString(); unread.value = Math.max(0, unread.value - 1) }
+    catch (error) { /* 标记失败不阻断查看内容 */ }
+    finally { busy.value = false }
+  }
+  uni.navigateTo({ url: target, fail: () => showFailure(new Error('页面打开失败，请稍后重试')) })
 }
 async function readAll() {
-  for (const item of items.value.filter((entry)=>!entry.read_at)) await read(item)
+  const pending = items.value.filter((entry) => !entry.read_at)
+  if (!pending.length) return
+  busy.value = true
+  let failed = 0
+  // 逐条标记并各自兜底：一条失败不影响其余消息，最后统一提示结果。
+  for (const item of pending) {
+    try { await platformApi.readNotification(item.id); item.read_at = new Date().toISOString() }
+    catch (error) { failed += 1 }
+  }
+  busy.value = false
+  unread.value = items.value.filter((entry) => !entry.read_at).length
+  if (failed) showFailure(new Error(`${failed} 条消息未能标记已读，请稍后重试`))
 }
 onShow(load)
 </script>
@@ -41,11 +61,11 @@ onShow(load)
       <view v-else-if="failure" class="state error"><text>{{ failure }}</text><button class="secondary" :disabled="busy" @click="load">重新加载</button></view>
       <view v-else-if="!items.length" class="state">目前没有消息。</view>
       <view v-else class="list">
-        <view v-for="item in items" :key="item.id" class="card" :class="{ unread:!item.read_at }" @click="read(item)">
+        <view v-for="item in items" :key="item.id" class="card" :class="{ unread:!item.read_at }" @click="open(item)">
           <view class="row"><text class="item-title">{{ item.title }}</text><text v-if="!item.read_at" class="badge">未读</text></view>
           <text class="body">{{ item.body }}</text>
-          <text class="date">{{ item.created_at }}</text>
-          <text class="hint">{{ item.read_at ? '已读' : '点击标记为已读' }}</text>
+          <text class="date">{{ formatDateTime(item.created_at) }}</text>
+          <text class="hint">{{ item.read_at ? '点击查看相关内容 ›' : '点击查看并标记已读 ›' }}</text>
         </view>
       </view>
     </view>
@@ -59,7 +79,7 @@ onShow(load)
 .toolbar { margin-bottom:12px; }
 .title,.item-title { font-weight:700; }
 .title { font-size:19px; }
-.link { min-height:40px; padding:0; background:transparent; color:#125fa8; font-size:14px; }
+.link { width:auto; margin:0; min-height:40px; padding:0; background:transparent; color:#125fa8; font-size:14px; }
 .link::after { border:0; }
 .list { display:flex; flex-direction:column; gap:9px; }
 .card,.state { padding:15px; border-radius:12px; background:#fff; }

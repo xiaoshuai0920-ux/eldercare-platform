@@ -1,1 +1,163 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>本地模拟支付控制台</title><style>body{font:16px "Microsoft YaHei",sans-serif;background:#f6f8f6;color:#18382f;max-width:720px;margin:70px auto;padding:0 20px}main{background:white;border:1px solid #e2eae4;border-radius:24px;padding:36px}h1{font-size:30px}label{display:block;margin:16px 0 6px}input,select,button{font:inherit;padding:12px;border:1px solid #cbd9d0;border-radius:10px;width:100%;box-sizing:border-box}button{background:#128a6c;color:white;border:0;cursor:pointer;margin-top:18px}button:focus-visible,input:focus-visible{outline:3px solid #50bfa0}pre{white-space:pre-wrap;word-break:break-all;background:#eef6f0;padding:16px;border-radius:12px}</style></head><body><main><p>仅供 Windows 本地测试 · 不涉及真实资金</p><h1>模拟支付控制台</h1><label>控制台令牌</label><input id="token" type="password" autocomplete="off"><label>主系统支付尝试标识</label><input id="ref"><label>订单编号</label><input id="order" type="number" min="1"><label>结算版本</label><input id="version" type="number" min="1" value="1"><label>金额</label><input id="amount" type="number" min="0" step="0.01"><button id="create">登记测试交易</button><label>交易结果</label><select id="status"><option value="SUCCESS">成功</option><option value="FAILED">失败</option><option value="CANCELLED">取消</option></select><button id="decide">设置交易结果</button><pre id="result" role="status">请填写主系统显示的尝试信息。</pre></main><script>const $=id=>document.getElementById(id);async function send(path,body){try{const response=await fetch('/api/transactions'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Console-Token':$('token').value},body:JSON.stringify(body)});$('result').textContent=JSON.stringify(await response.json(),null,2)+'\nHTTP '+response.status}catch(error){$('result').textContent=String(error)}}$('create').onclick=()=>send('',{attemptRef:$('ref').value,orderRef:Number($('order').value),settlementVersion:Number($('version').value),amount:$('amount').value});$('decide').onclick=()=>send('/'+encodeURIComponent($('ref').value)+'/status',{status:$('status').value});</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>本地模拟支付控制台</title>
+<style>
+body{font:16px "Microsoft YaHei",sans-serif;background:#f6f8f6;color:#18382f;max-width:720px;margin:70px auto;padding:0 20px}
+main{background:white;border:1px solid #e2eae4;border-radius:24px;padding:36px}
+h1{font-size:30px;margin:8px 0 24px}
+label{display:block;margin:16px 0 6px;font-weight:600}
+input,select,button{font:inherit;padding:12px;border:1px solid #cbd9d0;border-radius:10px;width:100%;box-sizing:border-box}
+button{background:#128a6c;color:white;border:0;cursor:pointer;margin-top:18px}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #50bfa0}
+pre{white-space:pre-wrap;word-break:break-all;background:#eef6f0;padding:16px;border-radius:12px}
+.hint{font-size:14px;color:#5c7a6f;margin:6px 0 0}
+.warn{font-size:14px;color:#a33a2a;margin:6px 0 0}
+.ok{font-size:14px;color:#0f6e56;margin:6px 0 0}
+.lead{color:#5c7a6f;margin:0 0 20px}
+details{margin-top:24px;border-top:1px solid #e2eae4;padding-top:16px;font-size:14px;color:#3d5a50}
+summary{cursor:pointer;font-weight:600;color:#18382f}
+details ol{padding-left:20px;line-height:1.8}
+code{background:#eef6f0;padding:1px 5px;border-radius:4px;font-size:13px}
+.result-title{font-weight:600;margin:18px 0 0}
+</style>
+</head>
+<body>
+<main>
+<p class="lead">仅供 Windows 本地测试 · 不涉及真实资金</p>
+<h1>模拟支付控制台</h1>
+
+<label for="token">控制台令牌</label>
+<input id="token" type="password" autocomplete="off" value="__CONSOLE_TOKEN__">
+<p class="hint" id="tokenHint">已自动填入本地控制台令牌；清空它即可演示「令牌无效」。</p>
+
+<label for="ref">主系统支付尝试标识</label>
+<input id="ref" autocomplete="off">
+
+<label for="order">订单编号</label>
+<input id="order" type="number" min="1">
+
+<label for="version">结算版本</label>
+<input id="version" type="number" min="1" value="1">
+
+<label for="amount">金额</label>
+<input id="amount" type="number" min="0" step="1" inputmode="decimal">
+<p class="hint" id="amountHint">必须与主系统显示的结算金额完全一致（含两位小数）。</p>
+
+<button id="create">① 登记测试交易</button>
+
+<label for="status">交易结果</label>
+<select id="status">
+<option value="SUCCESS">成功</option>
+<option value="FAILED">失败</option>
+<option value="CANCELLED">取消</option>
+</select>
+<button id="decide">② 设置交易结果</button>
+
+<p class="result-title" id="resultTitle" role="status">请填写主系统显示的尝试信息。</p>
+<pre id="result" hidden></pre>
+
+<details>
+<summary>填错了怎么办（金额与结算不一致导致结算无法继续）</summary>
+<p>主系统同步时先比对金额，不一致会直接拒绝，而且不会把交易改成失败，所以这笔结算会卡在「处理中」，必须手工复位：</p>
+<ol>
+<li>在本页把出错的那笔交易设为「取消」，点「② 设置交易结果」，让它退出活跃状态。</li>
+<li>在主库 <code>eldercare</code> 执行（把 <code>62</code> 换成订单号）：<br>
+<code>UPDATE payment_attempt SET remote_status='CANCELLED' WHERE settlement_id=(SELECT id FROM settlement WHERE order_id=62);</code><br>
+<code>UPDATE settlement SET status='FAILED' WHERE order_id=62;</code></li>
+<li>回主系统刷新结算面板，重新点「发起模拟支付」，用新的尝试标识和正确金额再登记一次。</li>
+</ol>
+</details>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const expectedAmount = (() => {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (!params.has('ref') && !params.has('order')) return null;
+  $('ref').value = params.get('ref') || '';
+  $('order').value = params.get('order') || '';
+  $('version').value = params.get('version') || '1';
+  $('amount').value = params.get('amount') || '';
+  const value = Number(params.get('amount'));
+  return Number.isFinite(value) ? value : null;
+})();
+
+if (!$('token').value) {
+  $('tokenHint').textContent = '未能自动填入令牌，请从 .env 的 PAYMENT_CONSOLE_TOKEN 复制后填写。';
+  $('tokenHint').className = 'warn';
+}
+
+function checkAmount() {
+  const hint = $('amountHint');
+  const typed = Number($('amount').value);
+  if (expectedAmount === null) {
+    hint.textContent = '必须与主系统显示的结算金额完全一致（含两位小数）。';
+    hint.className = 'hint';
+    return;
+  }
+  if (!Number.isFinite(typed) || typed.toFixed(2) !== expectedAmount.toFixed(2)) {
+    hint.textContent = '你输入的是 ' + ($('amount').value || '空') + '，主系统结算金额是 ' + expectedAmount.toFixed(2)
+      + '；不一致时登记会被拒绝，且该笔结算需要手工复位。';
+    hint.className = 'warn';
+    return;
+  }
+  hint.textContent = '与主系统结算金额一致（' + expectedAmount.toFixed(2) + '）。';
+  hint.className = 'ok';
+}
+$('amount').addEventListener('input', checkAmount);
+checkAmount();
+
+const LABEL = { PROCESSING: '处理中', SUCCESS: '成功', FAILED: '失败', CANCELLED: '取消' };
+
+function humanize(statusCode, body) {
+  if (statusCode === 200 || statusCode === 201) {
+    return body && body.status === 'PROCESSING'
+      ? '已登记，交易处于处理中；接着点「② 设置交易结果」。'
+      : '交易结果已设为「' + (LABEL[body && body.status] || (body && body.status)) + '」，回主系统点「刷新支付结果」。';
+  }
+  if (statusCode === 401) return '令牌无效：控制台令牌为空或不匹配，请检查 .env 的 PAYMENT_CONSOLE_TOKEN。';
+  if (statusCode === 404) return '交易未登记：请先点「① 登记测试交易」，再设置结果。';
+  if (statusCode === 409) return '冲突：同一订单版本已存在金额不同的交易，或该交易已经是终态。';
+  if (statusCode === 400) return '请求参数不合法：检查尝试标识、订单编号与版本。';
+  return '请求失败，状态码 ' + statusCode + '。';
+}
+
+async function send(path, body) {
+  const title = $('resultTitle');
+  const pre = $('result');
+  try {
+    const response = await fetch('/api/transactions' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Console-Token': $('token').value },
+      body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = text ? JSON.parse(text) : {}; } catch { payload = { raw: text }; }
+    title.textContent = humanize(response.status, payload);
+    title.className = 'result-title ' + (response.ok ? 'ok' : 'warn');
+    pre.hidden = false;
+    pre.textContent = JSON.stringify(payload, null, 2) + '\nHTTP ' + response.status;
+  } catch (error) {
+    title.textContent = '请求未发出：' + String(error);
+    title.className = 'result-title warn';
+    pre.hidden = true;
+  }
+}
+
+$('create').onclick = () => send('', {
+  attemptRef: $('ref').value,
+  orderRef: Number($('order').value),
+  settlementVersion: Number($('version').value),
+  amount: $('amount').value,
+});
+
+$('decide').onclick = () => send('/' + encodeURIComponent($('ref').value) + '/status', {
+  status: $('status').value,
+});
+</script>
+</body>
+</html>

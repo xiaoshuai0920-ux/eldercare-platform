@@ -123,8 +123,12 @@ export const catalogApi = {
       elderId,
       streetId,
     }),
+  /** 管理端：包含未上架项目，必须使用 admin 路由 */
   itemAreas: (itemId: number) =>
     api.get<{ id: number; full_name: string }[]>(`/catalog/admin/items/${itemId}/areas`),
+  /** 用户端：仅已上架项目的可服务街道，走公开路由，避免普通账号被 admin 鉴权拒绝 */
+  publicItemAreas: (itemId: number) =>
+    api.get<{ id: number; full_name: string }[]>(`/catalog/items/${itemId}/areas`),
   setItemArea: (itemId: number, streetId: number, covered: boolean) =>
     covered
       ? api.post<void>(`/catalog/admin/items/${itemId}/areas/${streetId}`)

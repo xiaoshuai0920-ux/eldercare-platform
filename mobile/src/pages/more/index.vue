@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import AppPageHeader from '../../components/AppPageHeader.vue'
 import AppBottomNav from '../../components/AppBottomNav.vue'
 import { errorMessage, requireRole } from '../../api/platform.js'
+import { unread, refreshUnread } from '../../store/unread.js'
 
 const ready = ref(false)
 const failure = ref('')
@@ -18,7 +19,7 @@ async function load() {
   try { ready.value = Boolean(await requireRole(['USER'])) }
   catch (error) { ready.value = false; failure.value = errorMessage(error, '页面加载失败') }
 }
-onShow(load)
+onShow(() => { load(); refreshUnread() })
 </script>
 
 <template>
@@ -28,7 +29,7 @@ onShow(load)
     <view class="content" v-else-if="ready">
       <view class="intro"><text class="title">照护与提醒</text><text class="muted">按服务对象的有效授权管理信息。</text></view>
       <button v-for="entry in entries" :key="entry.title" class="menu-card" @click="open(entry.url)">
-        <view><text class="menu-title">{{ entry.title }}</text><text class="muted">{{ entry.detail }}</text></view><text class="arrow">›</text>
+        <view><text class="menu-title">{{ entry.title }}</text><text v-if="entry.url === '/pages/messages/index' && unread" class="cnt">{{ unread > 99 ? '99+' : unread }}</text><text class="muted">{{ entry.detail }}</text></view><text class="arrow">›</text>
       </button>
     </view>
     <AppBottomNav active="more" />
@@ -47,5 +48,6 @@ onShow(load)
 .error button { min-height:44px; border-radius:9px; background:#eaf3fc; color:#104977; font-size:15px; }
 .error button::after { border:0; }
 .menu-title { font-weight:700; }
+.cnt { margin-left:8px; padding:1px 7px; border-radius:9px; background:#c2402e; color:#fff; font-size:12px; }
 .arrow { color:#125fa8; font-size:26px; }
 </style>

@@ -14,12 +14,18 @@ export function resetSession() {
 }
 
 export class ApiRequestError extends Error {
-  constructor(message, statusCode) {
+  constructor(message, statusCode, code) {
     super(message)
     this.name = 'ApiRequestError'
     this.statusCode = statusCode
+    this.code = code
   }
 }
+
+// 业务操作过程中会话过期（401）时，页面只弹一句提示会把用户困在当前页。
+// 由平台层注册一次跳登录的处理器；登录接口自身的 401 是密码错误，不能触发跳转。
+let unauthorizedHandler
+export function setUnauthorizedHandler(handler) { unauthorizedHandler = handler }
 
 async function send(path, method, data, token, extraHeaders = {}) {
   const header = { Accept: 'application/json' }
@@ -42,10 +48,13 @@ async function send(path, method, data, token, extraHeaders = {}) {
   const received = sessionCookie(response.cookies || [])
   if (received !== undefined) cookie = received || undefined
   // #endif
-  if (response.statusCode === 401) resetSession()
+  if (response.statusCode === 401) {
+    resetSession()
+    if (path !== '/auth/login' && path !== '/auth/csrf' && unauthorizedHandler) unauthorizedHandler()
+  }
   if (response.statusCode === 403) csrf = undefined
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new ApiRequestError(response.data?.message || `请求失败（${response.statusCode}）`, response.statusCode)
+    throw new ApiRequestError(response.data?.message || `请求失败（${response.statusCode}）`, response.statusCode, response.data?.code)
   }
   return response.data
 }

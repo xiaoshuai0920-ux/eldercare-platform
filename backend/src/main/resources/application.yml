@@ -9,6 +9,13 @@ server:
         same-site: lax
         secure: false
 spring:
+  # 从仓库根目录 .env 读取本地凭证：.env 已被 .gitignore 排除，密钥不进仓库。
+  # 三个相对路径覆盖不同工作目录（模块目录 / 仓库根 / target），缺失的文件会被 optional 忽略。
+  config:
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+      - optional:file:../../.env[.properties]
   application:
     name: eldercare-backend
   datasource:

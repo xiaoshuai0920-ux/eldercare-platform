@@ -693,6 +693,15 @@ textarea:focus-visible,
 .textarea:hover {
   border-color: var(--c-ink-muted);
 }
+/* 无可选项时下拉框被禁用：给出明确的不可用外观，避免用户以为是点击失效 */
+.select:disabled,
+.input:disabled,
+.textarea:disabled {
+  border-color: var(--c-line-strong);
+  background-color: var(--c-surface-sunken);
+  color: var(--c-ink-muted);
+  cursor: not-allowed;
+}
 .input:focus,
 .select:focus,
 .textarea:focus {

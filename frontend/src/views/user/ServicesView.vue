@@ -36,6 +36,7 @@
   const submitting = ref(false)
   const submitError = ref('')
   const areas = ref<{ id: number; full_name: string }[]>([])
+  const areasLoading = ref(false)
 
   const form = reactive({
     elderId: 0,
@@ -77,14 +78,20 @@
     submitError.value = ''
     form.duration = item.min_minutes ?? 60
     form.elderId = family.elders[0]?.id ?? 0
+    form.streetId = 0
+    areas.value = []
+    areasLoading.value = true
+    bookingOpen.value = true
     try {
       areas.value = await catalog.itemAreas(item.id)
       form.streetId = areas.value[0]?.id ?? 0
+      if (!areas.value.length) submitError.value = '该服务项目暂未配置可服务街道，请联系管理员'
     } catch (reason) {
       submitError.value = reason instanceof ApiError ? reason.message : '服务范围加载失败'
       areas.value = []
+    } finally {
+      areasLoading.value = false
     }
-    bookingOpen.value = true
   }
 
   async function openRecommendedBooking(item: CatalogItem, elderId: number, streetId: number) {
@@ -263,8 +270,21 @@
       </fieldset>
 
       <div class="grid grid--2" style="gap: var(--sp-4); margin-top: var(--sp-5)">
-        <AppField label="服务街道" html-for="bk-street" required help="仅列出该服务项目覆盖的街道。">
-          <AppSelect id="bk-street" v-model.number="form.streetId">
+        <AppField
+          label="服务街道"
+          html-for="bk-street"
+          required
+          :help="
+            areasLoading
+              ? '正在加载该服务项目覆盖的街道…'
+              : areas.length
+                ? '仅列出该服务项目覆盖的街道。'
+                : '该服务项目暂无可服务街道，请联系管理员补充覆盖范围。'
+          "
+        >
+          <AppSelect id="bk-street" v-model.number="form.streetId" :disabled="areasLoading || !areas.length">
+            <option v-if="areasLoading" :value="0">正在加载…</option>
+            <option v-else-if="!areas.length" :value="0">暂无可选街道</option>
             <option v-for="area in areas" :key="area.id" :value="area.id">{{ area.full_name }}</option>
           </AppSelect>
         </AppField>

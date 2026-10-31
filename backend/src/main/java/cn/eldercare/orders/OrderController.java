@@ -29,7 +29,8 @@ public class OrderController {
     public OrderController(OrderService service) { this.service = service; }
 
     public record CreateRequest(@NotNull Long elderId, @NotNull Long itemId, @NotNull Long streetId,
-                                @NotBlank @Size(max = 300) String address, @NotNull LocalDateTime startAt,
+                                @NotBlank @Size(max = 300) String address, @Size(max = 32) String contactPhone,
+                                @NotNull LocalDateTime startAt,
                                 @Min(1) @Max(1440) int durationMinutes) { }
     public record AssignRequest(@NotNull Long workerId) { }
     public record RejectRequest(@NotBlank @Size(max = 300) String reason) { }
@@ -40,7 +41,7 @@ public class OrderController {
                                     @RequestHeader(value = "Idempotency-Key", required = false) String key,
                                     Authentication auth) {
         if (key == null || key.isBlank() || key.length() > 100) throw new ApiException(HttpStatus.BAD_REQUEST, "IDEMPOTENCY_KEY_REQUIRED", "请提供有效请求标识");
-        long id = service.create(actor(auth), new OrderService.CreateOrder(input.elderId(), input.itemId(), input.streetId(), input.address(), input.startAt(), input.durationMinutes()), key);
+        long id = service.create(actor(auth), new OrderService.CreateOrder(input.elderId(), input.itemId(), input.streetId(), input.address(), input.contactPhone(), input.startAt(), input.durationMinutes()), key);
         return Map.of("id", id);
     }
 

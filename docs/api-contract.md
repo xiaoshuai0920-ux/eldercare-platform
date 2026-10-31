@@ -8,6 +8,9 @@
 - 创建订单强制使用 `Idempotency-Key`；接单、开始服务、提交完成和交易同步对已达目标状态的重复请求返回当前结果，其他命令按状态冲突拒绝重复执行。版本冲突返回 409，未认证 401、无权限 403、无资源 404、参数错误 400。
 - 模拟支付独立服务只接受受限控制台写入交易状态；主服务经带服务端凭证的查询接口按尝试标识核实金额、版本和状态，查询不可用与交易失败分开表示。
 - 生活提醒支持 `PUT /api/reminders/{id}`，请求体为 `title`、`recurrence`（`ONCE`、`DAILY`、`WEEKLY`）及 `nextFireAt`（业务时区 `Asia/Shanghai` 的未来本地时间）。调用方需具有该老人当前有效的提醒管理权限；只能修改 `ACTIVE` 提醒，已停止或结束返回 409。修改与投递共用提醒记录行锁，历史投递记录保留。
+- 停止的提醒通过 `POST /api/reminders/{id}/resume` 重新开启，请求体为 `nextFireAt`（未来本地时间）并恢复为 `ACTIVE`；只有 `STOPPED` 可恢复，`ACTIVE`/`FINISHED` 返回 409，过去时间返回 400，权限校验与停止一致。
+- `POST /api/orders` 请求体新增可选 `contactPhone`（最长 32），随订单快照保存；`GET /api/worker/tasks/{id}` 在派单未接单（`PENDING`）时不返回 `address_snapshot` 与 `contact_phone`，接单（`ACCEPTED`）后返回完整地址与联系电话。
+- `GET /api/notifications` 响应在分页字段之外附带 `unread`（当前账号可见的未读消息数），供入口角标使用。
 - 老人资料支持 `PUT /api/elders/{id}`，请求体为 `fullName`（非空，最多 80 字符）和 `birthDate`（ISO 日期或 null；省略时同样清空），返回修改后的老人资料。仅当前有效的家庭管理授权可修改，已撤销授权或档案不处于 ACTIVE 时返回 403；不修改家庭关系。
 - 管理员排班支持 `POST /api/admin/workers/{workerId}/schedules` 新增、`PUT /api/admin/workers/{workerId}/schedules/{scheduleId}` 修改、`DELETE /api/admin/workers/{workerId}/schedules/{scheduleId}` 删除；星期须为 1–7，结束时间须晚于开始时间。同一人员同一星期的时段不得重叠；目标不存在返回 404，时段冲突返回 409。三种写操作都先锁定服务人员记录，以串行化同一人员的排班变更；修改排除当前时段自身后检查重叠。
 
